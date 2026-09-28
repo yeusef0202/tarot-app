@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Arcana · Tarot Reader</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-star">✦</span> Arcana</div>
+    <nav class="menu" aria-label="Main menu">
+      <button class="menu-item active" data-view="reading">Reading</button>
+      <button class="menu-item" data-view="guide">Card Guide</button>
+      <button class="menu-item" data-view="about">How it works</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ============================ READING ============================ -->
+    <section id="view-reading" class="view active" aria-labelledby="reading-title">
+      <h1 id="reading-title" class="visually-hidden">Tarot reading</h1>
+
+      <div class="panel controls">
+        <div class="control-group">
+          <span class="control-label">Spread</span>
+          <div class="segmented" id="spread-choice" role="radiogroup" aria-label="Choose a spread"></div>
+          <p class="hint" id="spread-description"></p>
+        </div>
+
+        <div class="control-row">
+          <label class="question">
+            <span class="control-label">Your question <em>(optional)</em></span>
+            <input id="question" type="text" maxlength="140" placeholder="e.g. Will I pass my test tomorrow?" />
+            <span class="hint" id="question-hint"></span>
+          </label>
+          <label class="toggle">
+            <input id="reversals" type="checkbox" checked />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            <span>Allow reversed cards</span>
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="btn-shuffle" class="btn primary">🔀 Shuffle the deck</button>
+          <button id="btn-cut" class="btn" disabled>✂ Cut</button>
+          <button id="btn-reset" class="btn ghost" disabled>↺ New reading</button>
+        </div>
+        <p id="status" class="status" aria-live="polite"></p>
+      </div>
+
+      <div class="table">
+        <div id="deck-fan" class="fan" aria-label="Deck of cards"></div>
+        <div id="spread" class="spread"></div>
+      </div>
+
+      <section id="summary" class="panel summary" hidden></section>
+      <section id="explanations" class="explanations" aria-live="polite"></section>
+    </section>
+
+    <!-- ============================ CARD GUIDE ============================ -->
+    <section id="view-guide" class="view" aria-labelledby="guide-title">
+      <div class="panel">
+        <h1 id="guide-title">Card Guide</h1>
+        <p class="hint">All 78 cards of the Rider–Waite–Smith tarot. Click a card to read its upright and reversed meanings.</p>
+        <div class="guide-filters">
+          <div class="segmented" id="guide-filter"></div>
+          <input id="guide-search" type="search" placeholder="Search by name or keyword…" />
+        </div>
+      </div>
+      <div id="guide-grid" class="guide-grid"></div>
+      <p id="guide-empty" class="hint center" hidden>No cards match your search.</p>
+    </section>
+
+    <!-- ============================ ABOUT ============================ -->
+    <section id="view-about" class="view" aria-labelledby="about-title">
+      <div class="panel prose">
+        <h1 id="about-title">How tarot works</h1>
+
+        <h2>The deck</h2>
+        <p>A tarot deck has <strong>78 cards</strong> split into two groups:</p>
+        <ul>
+          <li><strong>Major Arcana (22 cards)</strong>, numbered 0 (The Fool) to XXI (The World). They represent big life lessons, turning points and spiritual themes, often read as "The Fool's Journey" through life.</li>
+          <li><strong>Minor Arcana (56 cards)</strong>, four suits of 14 cards (Ace to Ten, plus Page, Knight, Queen and King). They describe everyday events, feelings and people.</li>
+        </ul>
+
+        <h2>The four suits</h2>
+        <div class="suit-table">
+          <div><span class="suit-dot wands"></span><strong>Wands</strong> · Fire: passion, creativity, ambition, action.</div>
+          <div><span class="suit-dot cups"></span><strong>Cups</strong> · Water: emotions, love, relationships, intuition.</div>
+          <div><span class="suit-dot swords"></span><strong>Swords</strong> · Air: thoughts, communication, truth, conflict.</div>
+          <div><span class="suit-dot pentacles"></span><strong>Pentacles</strong> · Earth: money, work, health, the material world.</div>
+        </div>
+        <h2>Yes / No questions</h2>
+        <p>If your question can be answered with yes or no ("Will I pass my test tomorrow?"), the app gives an answer at the end of the reading. Each card leans <em>yes</em>, <em>no</em> or <em>maybe</em>: bright cards like The Sun, The Star or the Nine of Cups (the "wish card") are a strong yes, while The Tower, the Three of Swords or the Ten of Swords are a strong no. A reversed card weakens and flips its lean. The cards are weighted by position (the Future and Outcome cards count most) to reach one of five answers: <strong>Yes</strong>, <strong>Likely yes</strong>, <strong>Unclear</strong>, <strong>Likely no</strong> or <strong>No</strong>.</p>
+        <p><em>Tip:</em> keep reversed cards switched on for yes/no questions. Most upright cards lean yes, so without reversals the answers skew positive.</p>
+        <p>Numbers carry meaning too: <strong>Aces</strong> are beginnings, <strong>Fives</strong> are challenges, <strong>Tens</strong> are completion. <strong>Court cards</strong> often represent people or personality traits (Pages are students and messengers, Knights are action, Queens are inner mastery, Kings are outer mastery).</p>
+
+        <h2>Reversed cards</h2>
+        <p>When a card appears upside-down it is <em>reversed</em>. A reversal usually means the card's energy is blocked, delayed, internalized or excessive, and it is not simply "the opposite". Many readers ignore reversals; you can switch them off in the Reading menu.</p>
+
+        <h2>Doing a reading</h2>
+        <ol>
+          <li><strong>Choose a spread.</strong> Each position in a spread has its own meaning (for example Past, Present and Future).</li>
+          <li><strong>Focus on a question.</strong> Open questions ("What should I know about…?") work better than yes/no ones.</li>
+          <li><strong>Shuffle</strong> the deck while thinking about your question, and optionally <strong>cut</strong> it.</li>
+          <li><strong>Pick cards</strong> from the fanned-out deck, one for each position, in order.</li>
+          <li><strong>Read</strong> each card in the light of its position, then look at the reading as a whole: many Major Arcana, a dominant suit or lots of reversals all tell a story.</li>
+        </ol>
+
+        <p class="disclaimer">Tarot is a tool for reflection and self-exploration. It is not a substitute for medical, legal, financial or psychological advice.</p>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="card-dialog" class="card-dialog">
+    <form method="dialog"><button class="dialog-close" aria-label="Close">✕</button></form>
+    <div id="card-dialog-body"></div>
+  </dialog>
+
+  <footer class="footer">Rider–Waite–Smith tradition · Shuffled with a cryptographically secure random generator</footer>
+
+  <script src="deck.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
