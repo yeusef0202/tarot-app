@@ -7,52 +7,57 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- Text marked with data-i18n* is filled in from i18n.js in the chosen language. -->
   <header class="topbar">
     <div class="brand"><span class="brand-star">✦</span> Arcana</div>
     <nav class="menu" aria-label="Main menu">
-      <button class="menu-item active" data-view="reading">Reading</button>
-      <button class="menu-item" data-view="guide">Card Guide</button>
-      <button class="menu-item" data-view="chart">Birth Chart</button>
-      <button class="menu-item" data-view="about">How it works</button>
+      <button class="menu-item active" data-view="reading" data-i18n="ui.menu.reading">Reading</button>
+      <button class="menu-item" data-view="guide" data-i18n="ui.menu.guide">Card Guide</button>
+      <button class="menu-item" data-view="chart" data-i18n="ui.menu.chart">Birth Chart</button>
+      <button class="menu-item" data-view="about" data-i18n="ui.menu.about">How it works</button>
     </nav>
+    <label class="lang-switch">
+      <span aria-hidden="true">🌐</span>
+      <select id="lang-select" aria-label="Language" data-i18n-aria-label="ui.lang"></select>
+    </label>
   </header>
 
   <main>
     <!-- ============================ READING ============================ -->
     <section id="view-reading" class="view active" aria-labelledby="reading-title">
-      <h1 id="reading-title" class="visually-hidden">Tarot reading</h1>
+      <h1 id="reading-title" class="visually-hidden" data-i18n="ui.reading_title">Tarot reading</h1>
 
       <div class="panel controls">
         <div class="control-group">
-          <span class="control-label">Spread</span>
-          <div class="segmented" id="spread-choice" role="radiogroup" aria-label="Choose a spread"></div>
+          <span class="control-label" data-i18n="ui.spread">Spread</span>
+          <div class="segmented" id="spread-choice" role="radiogroup" aria-label="Choose a spread" data-i18n-aria-label="ui.choose_spread"></div>
           <p class="hint" id="spread-description"></p>
         </div>
 
         <div class="control-row">
           <label class="question">
-            <span class="control-label">Your question <em>(optional)</em></span>
-            <input id="question" type="text" maxlength="140" placeholder="e.g. Will I pass my test tomorrow? When will I find love?" />
+            <span class="control-label" data-i18n-html="ui.question_label">Your question <em>(optional)</em></span>
+            <input id="question" type="text" maxlength="140" placeholder="e.g. Will I pass my test tomorrow? When will I find love?" data-i18n-placeholder="ui.question_placeholder" />
             <span class="hint" id="question-hint"></span>
           </label>
           <label class="toggle">
             <input id="reversals" type="checkbox" checked />
             <span class="toggle-track"><span class="toggle-thumb"></span></span>
-            <span>Allow reversed cards</span>
+            <span data-i18n="ui.reversals">Allow reversed cards</span>
           </label>
         </div>
 
         <div class="actions">
           <button id="btn-shuffle" class="btn primary">🔀 Shuffle the deck</button>
-          <button id="btn-cut" class="btn" disabled>✂ Cut</button>
-          <button id="btn-reset" class="btn ghost" disabled>↺ New reading</button>
+          <button id="btn-cut" class="btn" disabled data-i18n="ui.cut">✂ Cut</button>
+          <button id="btn-reset" class="btn ghost" disabled data-i18n="ui.new_reading">↺ New reading</button>
         </div>
         <p id="status" class="status" aria-live="polite"></p>
         <p id="chart-status" class="hint chart-status"></p>
       </div>
 
       <div class="table">
-        <div id="deck-fan" class="fan" aria-label="Deck of cards"></div>
+        <div id="deck-fan" class="fan" aria-label="Deck of cards" data-i18n-aria-label="ui.deck_label"></div>
         <div id="spread" class="spread"></div>
       </div>
 
@@ -63,58 +68,58 @@
     <!-- ============================ CARD GUIDE ============================ -->
     <section id="view-guide" class="view" aria-labelledby="guide-title">
       <div class="panel">
-        <h1 id="guide-title">Card Guide</h1>
-        <p class="hint">All 78 cards of the Rider–Waite–Smith tarot. Click a card to read its upright and reversed meanings.</p>
+        <h1 id="guide-title" data-i18n="ui.guide_title">Card Guide</h1>
+        <p class="hint" data-i18n="ui.guide_hint">All 78 cards of the Rider–Waite–Smith tarot. Click a card to read its upright and reversed meanings.</p>
         <div class="guide-filters">
           <div class="segmented" id="guide-filter"></div>
-          <input id="guide-search" type="search" placeholder="Search by name or keyword…" />
+          <input id="guide-search" type="search" placeholder="Search by name or keyword…" data-i18n-placeholder="ui.guide_search" />
         </div>
       </div>
       <div id="guide-grid" class="guide-grid"></div>
-      <p id="guide-empty" class="hint center" hidden>No cards match your search.</p>
+      <p id="guide-empty" class="hint center" hidden data-i18n="ui.guide_empty">No cards match your search.</p>
     </section>
 
     <!-- ============================ BIRTH CHART ============================ -->
     <section id="view-chart" class="view" aria-labelledby="chart-title">
       <div class="panel">
-        <h1 id="chart-title">Your birth chart</h1>
-        <p class="hint">Enter your birth details to see your Sun, Moon and Rising signs, your planets, and the tarot cards linked to them. Your readings will then point out when one of your personal cards comes up.</p>
+        <h1 id="chart-title" data-i18n="ui.chart_title">Your birth chart</h1>
+        <p class="hint" data-i18n="ui.chart_intro">Enter your birth details to see your Sun, Moon and Rising signs, your planets, and the tarot cards linked to them. Your readings will then point out when one of your personal cards comes up.</p>
         <form id="birth-form" class="birth-form" novalidate>
-          <label>Name <em>(optional)</em><input id="birth-name" type="text" maxlength="40" autocomplete="given-name" /></label>
-          <label>Date of birth<input id="birth-date" type="date" required min="1800-01-01" max="2049-12-31" /></label>
-          <label>Time of birth<input id="birth-time" type="time" /></label>
-          <label class="check"><input id="birth-time-unknown" type="checkbox" /> I don't know my birth time</label>
+          <label><span data-i18n-html="ui.birth_name">Name <em>(optional)</em></span><input id="birth-name" type="text" maxlength="40" autocomplete="given-name" /></label>
+          <label><span data-i18n="ui.birth_date">Date of birth</span><input id="birth-date" type="date" required min="1800-01-01" max="2049-12-31" /></label>
+          <label><span data-i18n="ui.birth_time">Time of birth</span><input id="birth-time" type="time" /></label>
+          <label class="check"><input id="birth-time-unknown" type="checkbox" /> <span data-i18n="ui.birth_time_unknown">I don't know my birth time</span></label>
           <div class="place-field">
-            <label for="birth-place">Place of birth</label>
+            <label for="birth-place" data-i18n="ui.birth_place">Place of birth</label>
             <div class="place-row">
-              <input id="birth-place" type="search" placeholder="e.g. Aveiro, Portugal" autocomplete="off" />
-              <button type="button" id="btn-place" class="btn">Search</button>
+              <input id="birth-place" type="search" placeholder="e.g. Aveiro, Portugal" autocomplete="off" data-i18n-placeholder="ui.birth_place_placeholder" />
+              <button type="button" id="btn-place" class="btn" data-i18n="ui.search">Search</button>
             </div>
             <ul id="place-results" class="place-results" hidden></ul>
             <p id="place-chosen" class="hint"></p>
             <details id="manual-place">
-              <summary>Enter coordinates manually</summary>
+              <summary data-i18n="ui.manual">Enter coordinates manually</summary>
               <div class="manual-grid">
-                <label>Latitude <em>(° north; south is negative)</em><input id="birth-lat" type="number" step="any" min="-90" max="90" /></label>
-                <label>Longitude <em>(° east; west is negative)</em><input id="birth-lon" type="number" step="any" min="-180" max="180" /></label>
-                <label>Time zone<select id="birth-tz"></select></label>
+                <label><span data-i18n-html="ui.latitude">Latitude <em>(° north; south is negative)</em></span><input id="birth-lat" type="number" step="any" min="-90" max="90" /></label>
+                <label><span data-i18n-html="ui.longitude">Longitude <em>(° east; west is negative)</em></span><input id="birth-lon" type="number" step="any" min="-180" max="180" /></label>
+                <label><span data-i18n="ui.timezone">Time zone</span><select id="birth-tz"></select></label>
               </div>
             </details>
           </div>
           <div class="actions">
-            <button type="submit" class="btn primary">✦ Show my chart</button>
-            <button type="button" id="btn-forget" class="btn ghost" hidden>Forget my details</button>
+            <button type="submit" class="btn primary" data-i18n="ui.show_chart">✦ Show my chart</button>
+            <button type="button" id="btn-forget" class="btn ghost" hidden data-i18n="ui.forget">Forget my details</button>
           </div>
           <p id="birth-error" class="error" role="alert"></p>
         </form>
-        <p class="hint small">Your details are saved only in this browser. Searching for a place sends the place name to the free Open-Meteo geocoding service.</p>
+        <p class="hint small" data-i18n="ui.privacy">Your details are saved only in this browser. Searching for a place sends the place name to the free Open-Meteo geocoding service.</p>
       </div>
       <div id="chart-result" hidden></div>
     </section>
 
     <!-- ============================ ABOUT ============================ -->
-    <section id="view-about" class="view" aria-labelledby="about-title">
-      <div class="panel prose">
+    <section id="view-about" class="view">
+      <div class="panel prose" data-lang="en" lang="en">
         <h1 id="about-title">How tarot works</h1>
 
         <h2>The deck</h2>
@@ -172,16 +177,77 @@
 
         <p class="disclaimer">Tarot is a tool for reflection and self-exploration. It is not a substitute for medical, legal, financial or psychological advice.</p>
       </div>
+
+      <div class="panel prose" data-lang="pt" lang="pt-PT" hidden>
+        <h1>Como funciona o tarot</h1>
+
+        <h2>O baralho</h2>
+        <p>Um baralho de tarot tem <strong>78 cartas</strong>, divididas em dois grupos:</p>
+        <ul>
+          <li><strong>Arcanos Maiores (22 cartas)</strong>, numerados de 0 (O Louco) a XXI (O Mundo). Representam grandes lições de vida, pontos de viragem e temas espirituais, e são muitas vezes lidos como «a viagem do Louco» pela vida.</li>
+          <li><strong>Arcanos Menores (56 cartas)</strong>, quatro naipes de 14 cartas (do Ás ao Dez, mais Pajem, Cavaleiro, Rainha e Rei). Descrevem acontecimentos, sentimentos e pessoas do dia a dia.</li>
+        </ul>
+
+        <h2>Os quatro naipes</h2>
+        <div class="suit-table">
+          <div><span class="suit-dot wands"></span><strong>Paus</strong> · Fogo: paixão, criatividade, ambição, ação.</div>
+          <div><span class="suit-dot cups"></span><strong>Copas</strong> · Água: emoções, amor, relações, intuição.</div>
+          <div><span class="suit-dot swords"></span><strong>Espadas</strong> · Ar: pensamentos, comunicação, verdade, conflito.</div>
+          <div><span class="suit-dot pentacles"></span><strong>Ouros</strong> · Terra: dinheiro, trabalho, saúde, o mundo material.</div>
+        </div>
+        <h2>Perguntas de sim ou não</h2>
+        <p>Se a tua pergunta se pode responder com sim ou não («Vou passar no teste amanhã?»), a aplicação dá uma resposta no fim da leitura. Cada carta tende para o <em>sim</em>, para o <em>não</em> ou para o <em>talvez</em>: cartas luminosas como O Sol, A Estrela ou o Nove de Copas (a «carta dos desejos») são um sim forte, enquanto A Torre, o Três de Espadas ou o Dez de Espadas são um não forte. Uma carta invertida enfraquece e inverte a sua tendência. As cartas têm pesos diferentes consoante a posição (as cartas do Futuro e do Resultado contam mais) para chegar a uma de cinco respostas: <strong>Sim</strong>, <strong>Provavelmente sim</strong>, <strong>Incerto</strong>, <strong>Provavelmente não</strong> ou <strong>Não</strong>.</p>
+        <p><em>Dica:</em> mantém as cartas invertidas ativadas nas perguntas de sim ou não. A maioria das cartas direitas tende para o sim, por isso, sem cartas invertidas, as respostas ficam demasiado positivas.</p>
+
+        <h2>Outras perguntas</h2>
+        <p>As perguntas que não são de sim ou não recebem o seu próprio tipo de resposta:</p>
+        <ul>
+          <li><strong>Quando…?</strong> usa a astrologia das cartas. Cada carta numerada do 2 ao 10 rege dez dias do ano, cada carta da corte e cada Arcano Maior de um signo rege um mês, e cada Ás rege uma estação; assim, a carta mais importante da tiragem que tenha uma data dá um intervalo de datas. Os naipes definem o ritmo: Paus é rápido, Espadas também, Copas é moderado e Ouros é lento.</li>
+          <li><strong>Porquê…?</strong> lê as cartas do passado e da base da situação.</li>
+          <li><strong>Quem…?</strong> olha para as cartas da corte, que tradicionalmente representam pessoas, e para os signos que regem.</li>
+          <li><strong>Onde…?</strong> usa os elementos: Fogo (sul, sítios animados), Água (oeste, perto da água), Ar (este, cidades e ideias) e Terra (norte, sítios calmos e práticos).</li>
+          <li><strong>O que devo fazer…? / Como posso…?</strong> dá conselhos: em que te deves concentrar e o que deves evitar.</li>
+          <li><strong>A ou B?</strong> funciona melhor com a tiragem <strong>Dois Caminhos</strong>, que tira uma carta para cada opção.</li>
+          <li>Qualquer outra pergunta recebe uma <strong>perspetiva</strong> geral.</li>
+        </ul>
+
+        <h2>Astrologia e tarot</h2>
+        <p>O tarot e a astrologia estão ligados desde a Ordem Hermética da Aurora Dourada (Golden Dawn, 1888), cujo sistema o baralho Rider–Waite–Smith segue:</p>
+        <ul>
+          <li>Cada <strong>signo</strong> tem um Arcano Maior: Carneiro é O Imperador, Touro O Hierofante, Gémeos Os Enamorados, Caranguejo O Carro, Leão A Força, Virgem O Eremita, Balança A Justiça, Escorpião A Morte, Sagitário A Temperança, Capricórnio O Diabo, Aquário A Estrela e Peixes A Lua.</li>
+          <li>Cada <strong>planeta</strong> também tem uma carta: o Sol é O Sol, a Lua A Sacerdotisa, Mercúrio O Mago, Vénus A Imperatriz, Marte A Torre, Júpiter A Roda da Fortuna e Saturno O Mundo.</li>
+          <li>Cada signo divide-se em três <strong>decanatos</strong> de 10°, e cada decanato pertence a uma carta numerada dos Arcanos Menores (2–10), do naipe do elemento do signo. Por exemplo, o Dois de Paus é Marte em Carneiro (mais ou menos de 21 a 30 de março).</li>
+          <li>Os quatro <strong>elementos</strong> correspondem aos naipes: Fogo é Paus, Água é Copas, Ar é Espadas e Terra é Ouros.</li>
+        </ul>
+        <p>A página <strong>Mapa Astral</strong> usa estas ligações para encontrar as tuas cartas pessoais: as cartas dos teus signos solar, lunar e ascendente e dos seus decanatos, a tua carta da corte, e as tuas cartas de nascimento e do ano segundo a numerologia do tarot. Quando uma delas sai numa leitura, a aplicação assinala-a.</p>
+        <p>Os números também têm significado: os <strong>Ases</strong> são começos, os <strong>Cincos</strong> são desafios e os <strong>Dez</strong> são conclusões. As <strong>cartas da corte</strong> representam muitas vezes pessoas ou traços de personalidade (os Pajens são estudantes e mensageiros, os Cavaleiros são ação, as Rainhas são domínio interior e os Reis domínio exterior).</p>
+
+        <h2>Cartas invertidas</h2>
+        <p>Quando uma carta aparece de cabeça para baixo, diz-se que está <em>invertida</em>. Uma carta invertida significa normalmente que a sua energia está bloqueada, atrasada, virada para dentro ou em excesso, e não simplesmente «o contrário». Muitos leitores não usam cartas invertidas; podes desativá-las no menu Leitura.</p>
+
+        <h2>Como fazer uma leitura</h2>
+        <ol>
+          <li><strong>Escolhe uma tiragem.</strong> Cada posição de uma tiragem tem o seu próprio significado (por exemplo, Passado, Presente e Futuro).</li>
+          <li><strong>Concentra-te numa pergunta.</strong> As perguntas de sim ou não, de tempo («Quando…?»), de conselho («O que devo fazer…?») e do tipo «isto ou aquilo» recebem todas uma resposta direta.</li>
+          <li><strong>Baralha</strong> as cartas enquanto pensas na tua pergunta e, se quiseres, <strong>corta</strong> o baralho.</li>
+          <li><strong>Escolhe as cartas</strong> do baralho aberto em leque, uma para cada posição, pela ordem.</li>
+          <li><strong>Lê</strong> cada carta à luz da sua posição e depois olha para a leitura como um todo: muitos Arcanos Maiores, um naipe dominante ou muitas cartas invertidas contam, todos eles, uma história.</li>
+        </ol>
+
+        <p class="disclaimer">O tarot é uma ferramenta de reflexão e de autoconhecimento. Não substitui aconselhamento médico, jurídico, financeiro ou psicológico.</p>
+      </div>
     </section>
   </main>
 
   <dialog id="card-dialog" class="card-dialog">
-    <form method="dialog"><button class="dialog-close" aria-label="Close">✕</button></form>
+    <form method="dialog"><button class="dialog-close" aria-label="Close" data-i18n-aria-label="ui.close">✕</button></form>
     <div id="card-dialog-body"></div>
   </dialog>
 
-  <footer class="footer">Rider–Waite–Smith tradition · Shuffled with a cryptographically secure random generator</footer>
+  <footer class="footer" data-i18n="ui.footer">Rider–Waite–Smith tradition · Shuffled with a cryptographically secure random generator</footer>
 
+  <script src="i18n.js"></script>
+  <script src="cards-pt.js"></script>
   <script src="astro.js"></script>
   <script src="deck.js"></script>
   <script src="app.js"></script>

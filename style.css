@@ -21,6 +21,8 @@
 
 * { box-sizing: border-box; }
 
+[hidden] { display: none !important; }
+
 html, body { margin: 0; }
 
 body {
@@ -476,8 +478,12 @@ details p { margin: 6px 0 0; }
 /* ------------------------------------------------------------ responsive */
 @media (max-width: 700px) {
   :root { --cw: 92px; }
-  .topbar { padding: 10px 14px; }
-  .menu-item { padding: 6px 10px; font-size: .9rem; }
+  .topbar { padding: 8px 12px; gap: 6px 10px; }
+  /* Brand and language on the first row, the menu on its own row below. */
+  .lang-switch { order: 2; }
+  .menu { order: 3; width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .menu-item { padding: 6px 8px; font-size: .8rem; white-space: nowrap; flex: 0 0 auto; }
+  .lang-switch select { padding: 4px 8px; font-size: .85rem; }
   .fan { --fw: 40px; }
   .spread { gap: 14px; }
   .spread.celtic { --cw: 56px; grid-template-columns: repeat(3, calc(var(--cw) + 20px)) 12px calc(var(--cw) + 20px); gap: 0 4px; }
@@ -492,3 +498,12 @@ details p { margin: 6px 0 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------------------------------------------------------------- language */
+.lang-switch { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.lang-switch select {
+  padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border); cursor: pointer;
+  background: rgba(255,255,255,.05); color: var(--text); font: inherit; font-size: .9rem; color-scheme: dark;
+}
+.lang-switch select:hover { background: rgba(255,255,255,.1); }
+.lang-switch select:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }

@@ -1,10 +1,14 @@
-/* Tarot app UI. Depends on astro.js (window.Astro) and deck.js (window.Tarot). */
+/* Tarot app UI. Depends on i18n.js (window.I18N), astro.js (window.Astro)
+ * and deck.js (window.Tarot). */
 (function () {
   "use strict";
 
+  const I = window.I18N;
+  const t = I.t;
   const T = window.Tarot;
   const A = window.Astro;
   const $ = (sel) => document.querySelector(sel);
+  const tx = (card) => T.text(card); // card texts in the current language
 
   // ------------------------------------------------------------------ state
   const state = {
@@ -14,10 +18,13 @@
     drawn: [],       // array of { card, reversed } in spread-position order
     busy: false,     // true while an animation is running
     activeIndex: -1, // drawn card currently highlighted
+    status: null,    // function returning the status message (re-run on language change)
+    dialogCard: null, // id of the card open in the dialog
   };
 
   // Birth chart (saved in localStorage) and the tarot cards linked to it.
   const STORAGE_KEY = "arcana.birth";
+  const LANG_KEY = "arcana.lang";
   const chartState = { saved: null, chart: null, links: [] };
 
   // ------------------------------------------------------------ suit icons
@@ -40,32 +47,36 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  const signName = (s) => t("sign_" + s.name);
+  const nameOf = (d) => (d.reversed ? t("ui.reversed_paren", { name: tx(d.card).name }) : tx(d.card).name);
+
   // ------------------------------------------------------------ rendering
   function cardFrontHtml(card) {
+    const text = tx(card);
     if (card.arcana === "major") {
       return (
         '<div class="card-front major">' +
         '<div class="cf-top">' + card.numeral + "</div>" +
         '<div class="cf-art"><span class="cf-glyph">' + card.glyph + "︎</span></div>" +
-        '<div class="cf-name">' + escapeHtml(card.name) + "</div></div>"
+        '<div class="cf-name">' + escapeHtml(text.name) + "</div></div>"
       );
     }
     const icon = ICONS[card.suit];
     let art;
     if (card.court) {
-      art = '<div class="cf-court">' + icon + '<span class="cf-court-letter">' + card.rank[0] + "</span></div>";
+      art = '<div class="cf-court">' + icon + '<span class="cf-court-letter">' + text.rank[0] + "</span></div>";
     } else if (card.number === 1) {
       art = '<div class="cf-big">' + icon + "</div>";
     } else {
       const cls = card.number > 6 ? "cf-pips three-col" : "cf-pips";
       art = '<div class="' + cls + '">' + icon.repeat(card.number) + "</div>";
     }
-    const top = card.court ? card.rank : card.number === 1 ? "ACE" : String(card.number);
+    const top = card.court ? text.rank : card.number === 1 ? t("ace_short") : String(card.number);
     return (
       '<div class="card-front ' + card.suit + '">' +
-      '<div class="cf-top">' + top + "</div>" +
+      '<div class="cf-top">' + escapeHtml(top) + "</div>" +
       '<div class="cf-art">' + art + "</div>" +
-      '<div class="cf-name">' + escapeHtml(card.name) + "</div></div>"
+      '<div class="cf-name">' + escapeHtml(text.name) + "</div></div>"
     );
   }
 
@@ -83,11 +94,10 @@
   }
 
   function metaLine(card) {
-    if (card.arcana === "major") {
-      return "Major Arcana " + card.numeral + " · " + card.astro;
-    }
-    const s = T.SUITS[card.suit];
-    return "Minor Arcana · " + s.name + " · " + s.element + (card.court ? " · Court card" : "") + " · " + card.astro;
+    const text = tx(card);
+    if (card.arcana === "major") return t("ui.major_meta", { numeral: card.numeral, astro: text.astro });
+    return t("ui.minor_meta", { suit: text.suit, element: text.element }) +
+      (card.court ? " · " + t("ui.court_card") : "") + " · " + text.astro;
   }
 
   const cardByName = (name) => T.DECK.find((c) => c.name === name);
@@ -95,14 +105,15 @@
   /** Small clickable card (opens the card dialog). */
   function miniCardHtml(name, caption) {
     const c = cardByName(name);
-    return '<button type="button" class="mini-card" data-card-id="' + c.id + '" aria-label="' + escapeHtml(name) + '">' +
+    return '<button type="button" class="mini-card" data-card-id="' + c.id + '" aria-label="' + escapeHtml(tx(c).name) + '">' +
       cardHtml(c, false, { flipped: true, static: true }) +
       (caption ? '<span class="mini-caption">' + escapeHtml(caption) + "</span>" : "") + "</button>";
   }
 
   /** Inline card name that opens the card dialog. */
   function cardLinkHtml(name) {
-    return '<button type="button" class="card-link" data-card-id="' + cardByName(name).id + '">' + escapeHtml(name) + "</button>";
+    const c = cardByName(name);
+    return '<button type="button" class="card-link" data-card-id="' + c.id + '">' + escapeHtml(tx(c).name) + "</button>";
   }
 
   function keywordsHtml(list) {
@@ -111,7 +122,7 @@
 
   // --------------------------------------------------------------- reading
   function spreadDef() {
-    return T.SPREADS[state.spread];
+    return T.spreadText(state.spread);
   }
 
   function phase() {
@@ -120,15 +131,17 @@
     return "drawing";
   }
 
+  /** Show a status message. `msg` is a function so it can be re-rendered in another language. */
   function setStatus(msg) {
-    $("#status").textContent = msg;
+    state.status = typeof msg === "function" ? msg : () => msg;
+    $("#status").textContent = state.status();
   }
 
   function renderSpreadChoice() {
     const wrap = $("#spread-choice");
     wrap.innerHTML = "";
     Object.keys(T.SPREADS).forEach((key) => {
-      const s = T.SPREADS[key];
+      const s = T.spreadText(key);
       const b = document.createElement("button");
       b.type = "button";
       b.setAttribute("role", "radio");
@@ -137,10 +150,9 @@
       b.textContent = s.name + " (" + s.positions.length + ")";
       b.addEventListener("click", () => {
         if (key === state.spread) return;
-        if (state.drawn.length > 0 && phase() !== "complete" &&
-            !confirm("Switching spreads will discard the current reading. Continue?")) return;
+        if (state.drawn.length > 0 && phase() !== "complete" && !confirm(t("ui.confirm_switch"))) return;
         state.spread = key;
-        resetReading("Spread changed to " + s.name + ". Shuffle the deck to begin.");
+        resetReading(() => t("ui.status_spread", { name: T.spreadText(key).name }));
         renderSpreadChoice();
         renderQuestionHint();
       });
@@ -163,10 +175,10 @@
       b.dataset.index = String(i);
       b.innerHTML = '<span class="card-back"></span>';
       if (p === "drawing") {
-        b.setAttribute("aria-label", "Take card " + (i + 1) + " of " + count);
+        b.setAttribute("aria-label", t("ui.take_card", { i: i + 1, n: count }));
       } else {
         b.disabled = true;
-        b.setAttribute("aria-label", p === "idle" ? "Deck (shuffle first)" : "Deck");
+        b.setAttribute("aria-label", t(p === "idle" ? "ui.deck_idle" : "ui.deck"));
       }
       frag.appendChild(b);
     }
@@ -189,11 +201,11 @@
         const inner = d ? cardHtml(d.card, d.reversed, { flipped: true, static: true }) : "<span>" + (i + 1) + "</span>";
         return (
           '<div class="' + cls.join(" ") + '" data-position="' + i + '"' +
-          (d ? ' role="button" tabindex="0" aria-label="Show meaning of ' + escapeHtml(d.card.name) + '"' : "") +
+          (d ? ' role="button" tabindex="0" aria-label="' + escapeHtml(t("ui.show_meaning", { name: tx(d.card).name })) + '"' : "") +
           ' title="' + (i + 1) + ". " + escapeHtml(pos.name) + '">' +
           '<div class="slot-frame">' + inner + "</div>" +
           '<div class="slot-label"><b>' + (i + 1) + ". " + escapeHtml(pos.name) + "</b>" +
-          (d ? escapeHtml(d.card.name) + (d.reversed ? '<br><span class="rev-tag">Reversed</span>' : "") : "") +
+          (d ? escapeHtml(tx(d.card).name) + (d.reversed ? '<br><span class="rev-tag">' + t("ui.reversed") + "</span>" : "") : "") +
           "</div></div>"
         );
       })
@@ -203,6 +215,7 @@
   function explanationHtml(d, i) {
     const pos = spreadDef().positions[i];
     const c = d.card;
+    const text = tx(c);
     const orient = d.reversed ? "reversed" : "upright";
     const other = d.reversed ? "upright" : "reversed";
     return (
@@ -212,28 +225,33 @@
       "<div>" +
       '<p class="explain-pos"><b>' + (i + 1) + ". " + escapeHtml(pos.name) + "</b></p>" +
       '<p class="pos-meaning">' + escapeHtml(pos.meaning) + "</p>" +
-      '<h3 class="explain-name">' + escapeHtml(c.name) +
-      (d.reversed ? '<span class="badge rev">Reversed</span>' : '<span class="badge up">Upright</span>') + "</h3>" +
+      '<h3 class="explain-name">' + escapeHtml(text.name) +
+      (d.reversed ? '<span class="badge rev">' + t("ui.reversed") + "</span>" : '<span class="badge up">' + t("ui.upright") + "</span>") + "</h3>" +
       '<p class="meta">' + escapeHtml(metaLine(c)) + "</p>" +
       personalNoteHtml(i) +
-      keywordsHtml(c.keywords[orient]) +
-      '<p class="meaning">' + escapeHtml(c.meaning[orient]) + "</p>" +
-      '<p class="imagery"><strong>On the card:</strong> ' + escapeHtml(c.image) + "</p>" +
-      "<details><summary>" + (d.reversed ? "Upright" : "Reversed") + " meaning</summary>" +
-      "<p>" + escapeHtml(c.meaning[other]) + "</p></details>" +
+      keywordsHtml(text.keywords[orient]) +
+      '<p class="meaning">' + escapeHtml(text.meaning[orient]) + "</p>" +
+      '<p class="imagery"><strong>' + t("ui.on_the_card") + "</strong> " + escapeHtml(text.image) + "</p>" +
+      "<details><summary>" + t(d.reversed ? "ui.upright_meaning" : "ui.reversed_meaning") + "</summary>" +
+      "<p>" + escapeHtml(text.meaning[other]) + "</p></details>" +
       "</div></article>"
     );
   }
 
   function personalNoteHtml(i) {
     const link = T.personalLinks(state.drawn, chartState.links).find((l) => l.index === i);
-    return link ? '<p class="personal-note">✦ <b>Personal card.</b> ' + escapeHtml(link.why.join(" ")) + "</p>" : "";
+    return link ? '<p class="personal-note">✦ <b>' + t("ui.personal_card") + "</b> " + escapeHtml(link.why.join(" ")) + "</p>" : "";
   }
 
   function renderExplanations() {
     // Most recent draw first, so the newest explanation is right below the spread.
     const html = state.drawn.map((d, i) => ({ d, i })).reverse().map(({ d, i }) => explanationHtml(d, i)).join("");
     $("#explanations").innerHTML = html;
+  }
+
+  function meterHtml(score, left, right) {
+    return '<div class="meter" aria-hidden="true"><span>' + left + '</span><div class="meter-track">' +
+      '<div class="meter-marker" style="left:' + ((score + 1) * 50).toFixed(1) + '%"></div></div><span>' + right + "</span></div>";
   }
 
   function answerHtml(q) {
@@ -248,20 +266,14 @@
       '<span class="question-echo">“' + escapeHtml(q) + "”</span></div>" +
       (sentence ? '<p class="answer-sentence">' + escapeHtml(sentence) + "</p>" : "") +
       '<p class="answer-text">' + escapeHtml(v.text) + "</p>" +
-      meterHtml(r.score, "No", "Yes") +
-      '<p class="answer-key">Key card: <b>' + escapeHtml(k.card.name) + (k.reversed ? " (reversed)" : "") +
-      "</b> in the " + escapeHtml(k.position) + " position, which leans " + escapeHtml(k.lean) + ".</p>" +
+      meterHtml(r.score, t("ui.meter_no"), t("ui.meter_yes")) +
+      '<p class="answer-key">' + t("ui.key_card", { card: escapeHtml(nameOf(k)), position: escapeHtml(k.position), lean: escapeHtml(k.lean) }) + "</p>" +
       '<ul class="lean-list">' + r.items.map((it) =>
-        "<li>" + escapeHtml(it.position) + ": " + escapeHtml(it.card.name) + (it.reversed ? " (R)" : "") +
+        "<li>" + escapeHtml(it.position) + ": " + escapeHtml(tx(it.card).name) + (it.reversed ? " (" + t("ui.r_short") + ")" : "") +
         ' <span class="lean lean-' + leanClass(it.value) + '">' + escapeHtml(it.lean) + "</span></li>").join("") + "</ul>" +
-      '<p class="answer-note">Tarot offers guidance and reflection, not certainty.</p>' +
+      '<p class="answer-note">' + t("ui.note") + "</p>" +
       "</div>"
     );
-  }
-
-  function meterHtml(score, left, right) {
-    return '<div class="meter" aria-hidden="true"><span>' + left + '</span><div class="meter-track">' +
-      '<div class="meter-marker" style="left:' + ((score + 1) * 50).toFixed(1) + '%"></div></div><span>' + right + "</span></div>";
   }
 
   /** Answer box for questions that aren't yes/no (when, why, who, where, advice, A or B, outlook). */
@@ -274,9 +286,9 @@
       '<div class="answer-head"><span class="answer-label">' + escapeHtml(a.label) + "</span>" +
       '<span class="question-echo">“' + escapeHtml(q) + "”</span></div>" +
       '<p class="answer-sentence">' + escapeHtml(a.headline) + "</p>" +
-      (a.score != null ? meterHtml(a.score, "Difficult", "Favourable") : "") +
+      (a.score != null ? meterHtml(a.score, t("ui.meter_bad"), t("ui.meter_good")) : "") +
       (a.details.length ? '<ul class="answer-details">' + a.details.map((d) => "<li>" + escapeHtml(d) + "</li>").join("") + "</ul>" : "") +
-      '<p class="answer-note">Tarot offers guidance and reflection, not certainty.</p>' +
+      '<p class="answer-note">' + t("ui.note") + "</p>" +
       "</div>"
     );
   }
@@ -286,13 +298,14 @@
     if (!chartState.chart) return "";
     const links = T.personalLinks(state.drawn, chartState.links);
     const positions = spreadDef().positions;
-    const items = links.map((l) =>
-      "<li>" + escapeHtml(l.card.name + " (" + positions[l.index].name + ") is your " +
-        l.roles.map((r) => r.toLowerCase()).join(" and ") + " card: this part of the reading speaks directly about you.") + "</li>");
+    const items = links.map((l) => "<li>" + escapeHtml(t("ui.personal_link", {
+      card: tx(l.card).name, position: positions[l.index].name,
+      roles: I.joinList(l.roles.map((r) => r.toLowerCase())),
+    })) + "</li>");
     const harmony = T.elementHarmony(chartState.chart.dominantElement, state.drawn);
     if (harmony) items.push("<li>" + escapeHtml(harmony) + "</li>");
-    if (!links.length) items.unshift("<li>None of your personal cards came up in this reading.</li>");
-    return '<h3>Your chart and this reading</h3><ul class="chart-links">' + items.join("") + "</ul>";
+    if (!links.length) items.unshift("<li>" + t("ui.no_personal") + "</li>");
+    return "<h3>" + t("ui.chart_and_reading") + '</h3><ul class="chart-links">' + items.join("") + "</ul>";
   }
 
   function renderSummary() {
@@ -306,14 +319,14 @@
     const yesNo = T.isYesNoQuestion(q);
     const notes = T.summarize(state.drawn);
     el.innerHTML =
-      "<h2>Your reading</h2>" +
+      "<h2>" + t("ui.your_reading") + "</h2>" +
       (yesNo ? answerHtml(q) : q ? openAnswerHtml(q) : "") +
-      "<h3>Reading the cards together</h3>" +
+      "<h3>" + t("ui.together") + "</h3>" +
       '<p class="story">' + escapeHtml(T.narrate(state.drawn, state.spread)) + "</p>" +
-      (notes.length ? "<h3>Patterns in the spread</h3><ul>" + notes.map((n) => "<li>" + escapeHtml(n) + "</li>").join("") + "</ul>" : "") +
+      (notes.length ? "<h3>" + t("ui.patterns") + "</h3><ul>" + notes.map((n) => "<li>" + escapeHtml(n) + "</li>").join("") + "</ul>" : "") +
       chartLinksHtml() +
       '<p class="cards-line">' +
-      state.drawn.map((d, i) => (i + 1) + ". " + spreadDef().positions[i].name + ": " + d.card.name + (d.reversed ? " (R)" : "")).map(escapeHtml).join(" · ") +
+      state.drawn.map((d, i) => (i + 1) + ". " + spreadDef().positions[i].name + ": " + tx(d.card).name + (d.reversed ? " (" + t("ui.r_short") + ")" : "")).map(escapeHtml).join(" · ") +
       "</p>";
     el.hidden = false;
   }
@@ -321,10 +334,8 @@
   function renderQuestionHint() {
     const q = $("#question").value.trim();
     const type = T.classifyQuestion(q);
-    let hint = !type
-      ? "Tip: ask a yes/no question (“Will I pass my test tomorrow?”), or ask when, why, who, where, what to do, or “A or B?”."
-      : T.QUESTION_TYPES[type].hint;
-    if (type === "choice" && state.spread !== "choice") hint += " Choose the Two Paths spread for this.";
+    let hint = !type ? t("ui.hint_empty") : T.QUESTION_TYPES[type].hint;
+    if (type === "choice" && state.spread !== "choice") hint += t("ui.hint_choose_two_paths");
     $("#question-hint").textContent = hint;
   }
 
@@ -332,19 +343,19 @@
     const c = chartState.chart;
     const el = $("#chart-status");
     if (!c) {
-      el.innerHTML = 'Tip: add your birth details in <button type="button" class="card-link" data-view="chart">Birth Chart</button> to see which cards are personal to you.';
+      el.innerHTML = t("ui.chart_tip", { link: '<button type="button" class="card-link" data-view="chart">' + t("ui.menu.chart") + "</button>" });
       return;
     }
-    const big = [["sun", "☉"], ["moon", "☽"], ["ascendant", "Rising"]].filter(([k]) => c.byKey[k])
-      .map(([k, g]) => g + " " + c.byKey[k].sign.name).join(" · ");
-    el.innerHTML = "✦ Using your birth chart (" + escapeHtml(big) + "): your personal cards will be marked. " +
-      '<button type="button" class="card-link" data-view="chart">Edit</button>';
+    const big = [["sun", "☉"], ["moon", "☽"], ["ascendant", t("ui.big_rising")]].filter(([k]) => c.byKey[k])
+      .map(([k, g]) => g + " " + signName(c.byKey[k].sign)).join(" · ");
+    el.innerHTML = escapeHtml(t("ui.chart_using", { big })) +
+      ' <button type="button" class="card-link" data-view="chart">' + t("ui.edit") + "</button>";
   }
 
   function renderButtons() {
     const p = phase();
     $("#btn-shuffle").disabled = state.busy || state.drawn.length > 0;
-    $("#btn-shuffle").textContent = p === "idle" ? "🔀 Shuffle the deck" : "🔀 Shuffle again";
+    $("#btn-shuffle").textContent = t(p === "idle" ? "ui.shuffle" : "ui.shuffle_again");
     $("#btn-cut").disabled = state.busy || p !== "drawing" || state.drawn.length > 0;
     $("#btn-reset").disabled = state.busy || p === "idle";
   }
@@ -362,7 +373,7 @@
     state.drawn = [];
     state.activeIndex = -1;
     renderAll();
-    setStatus(msg || "Choose a spread, focus on your question and shuffle the deck.");
+    setStatus(msg || (() => t("ui.status_start")));
   }
 
   function animateFan(cls, ms) {
@@ -387,10 +398,10 @@
     state.pile = T.shuffle(T.DECK, { reversals: state.reversals });
     state.activeIndex = -1;
     renderAll();
-    setStatus("Shuffling…");
+    setStatus(() => t("ui.status_shuffling"));
     await animateFan("shuffling", 700);
     renderButtons();
-    setStatus("Deck shuffled. Cut it if you like, then pick card 1 (" + spreadDef().positions[0].name + ") from the deck.");
+    setStatus(() => t("ui.status_shuffled", { position: spreadDef().positions[0].name }));
   }
 
   async function doCut() {
@@ -398,7 +409,15 @@
     state.pile = T.cut(state.pile);
     await animateFan("cutting", 500);
     renderButtons();
-    setStatus("The deck has been cut. Pick card 1 (" + spreadDef().positions[0].name + ").");
+    setStatus(() => t("ui.status_cut", { position: spreadDef().positions[0].name }));
+  }
+
+  function completeStatus() {
+    const q = $("#question").value.trim();
+    const type = T.classifyQuestion(q);
+    if (type === "yesno") return t("ui.status_done_yesno", { label: T.yesNoReading(state.drawn, state.spread).verdict.label });
+    if (type) return t("ui.status_done_type", { type: T.QUESTION_TYPES[type].label.toLowerCase() });
+    return t("ui.status_done");
   }
 
   function takeCard(index) {
@@ -418,18 +437,11 @@
     const slotCard = document.querySelector('.slot[data-position="' + pos + '"] .card');
     if (slotCard) slotCard.classList.add("flip-in");
 
-    const def = spreadDef();
     if (phase() === "complete") {
-      const q = $("#question").value.trim();
-      const type = T.classifyQuestion(q);
-      setStatus(type === "yesno"
-        ? "Reading complete. Your answer: " + T.yesNoReading(state.drawn, state.spread).verdict.label + ". Scroll down for the full interpretation."
-        : type
-          ? "Reading complete. Your " + T.QUESTION_TYPES[type].label.toLowerCase() + " answer is below."
-          : "Reading complete. Scroll down for the full interpretation, or start a new reading.");
+      setStatus(completeStatus);
     } else {
       const next = state.drawn.length;
-      setStatus("You drew " + d.card.name + (d.reversed ? " (reversed)" : "") + ". Now pick card " + (next + 1) + " (" + def.positions[next].name + ").");
+      setStatus(() => t("ui.status_drew", { card: nameOf(d), n: next + 1, position: spreadDef().positions[next].name }));
     }
   }
 
@@ -445,8 +457,8 @@
   const guideState = { filter: "all", query: "" };
 
   function renderGuideFilters() {
-    const filters = [["all", "All"], ["major", "Major Arcana"]].concat(
-      Object.keys(T.SUITS).map((k) => [k, T.SUITS[k].name])
+    const filters = [["all", t("ui.filter_all")], ["major", t("ui.filter_major")]].concat(
+      Object.keys(T.SUITS).map((k) => [k, t("suit_" + k)])
     );
     const wrap = $("#guide-filter");
     wrap.innerHTML = "";
@@ -471,43 +483,43 @@
       if (guideState.filter === "major" && c.arcana !== "major") return false;
       if (guideState.filter !== "all" && guideState.filter !== "major" && c.suit !== guideState.filter) return false;
       if (!q) return true;
-      const hay = [c.name].concat(c.keywords.upright, c.keywords.reversed).join(" ").toLowerCase();
+      const text = tx(c);
+      const hay = [text.name].concat(text.keywords.upright, text.keywords.reversed).join(" ").toLowerCase();
       return hay.includes(q);
     });
     $("#guide-grid").innerHTML = cards
-      .map((c) => '<button type="button" class="guide-item" data-card-id="' + c.id + '" aria-label="' + escapeHtml(c.name) + '">' +
+      .map((c) => '<button type="button" class="guide-item" data-card-id="' + c.id + '" aria-label="' + escapeHtml(tx(c).name) + '">' +
         cardHtml(c, false, { flipped: true, static: true }) + "</button>")
       .join("");
     $("#guide-empty").hidden = cards.length > 0;
   }
 
-  function openCardDialog(id) {
+  function renderCardDialog(id) {
     const c = T.DECK.find((x) => x.id === id);
-    if (!c) return;
+    if (!c) return false;
+    const text = tx(c);
     $("#card-dialog-body").innerHTML =
       '<div class="dialog-card" data-card-id="' + c.id + '">' +
       "<div>" + cardHtml(c, false, { flipped: true, static: true }) + "</div>" +
       "<div>" +
-      "<h2>" + escapeHtml(c.name) + "</h2>" +
+      "<h2>" + escapeHtml(text.name) + "</h2>" +
       '<p class="meta" style="color:var(--muted)">' + escapeHtml(metaLine(c)) + "</p>" +
-      '<p class="imagery"><strong>On the card:</strong> ' + escapeHtml(c.image) + "</p>" +
-      '<h4>Upright <span class="badge up">Upright</span></h4>' + keywordsHtml(c.keywords.upright) +
-      '<p class="meaning-upright">' + escapeHtml(c.meaning.upright) + "</p>" +
-      '<h4>Reversed <span class="badge rev">Reversed</span></h4>' + keywordsHtml(c.keywords.reversed) +
-      '<p class="meaning-reversed">' + escapeHtml(c.meaning.reversed) + "</p>" +
+      '<p class="imagery"><strong>' + t("ui.on_the_card") + "</strong> " + escapeHtml(text.image) + "</p>" +
+      "<h4>" + t("ui.upright") + ' <span class="badge up">' + t("ui.upright") + "</span></h4>" + keywordsHtml(text.keywords.upright) +
+      '<p class="meaning-upright">' + escapeHtml(text.meaning.upright) + "</p>" +
+      "<h4>" + t("ui.reversed") + ' <span class="badge rev">' + t("ui.reversed") + "</span></h4>" + keywordsHtml(text.keywords.reversed) +
+      '<p class="meaning-reversed">' + escapeHtml(text.meaning.reversed) + "</p>" +
       "</div></div>";
+    return true;
+  }
+
+  function openCardDialog(id) {
+    if (!renderCardDialog(id)) return;
+    state.dialogCard = id;
     $("#card-dialog").showModal();
   }
 
   // ------------------------------------------------------------ birth chart
-  const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August",
-    "September", "October", "November", "December"];
-  const MODALITY_TEXT = {
-    Cardinal: "you like to start things and take the initiative",
-    Fixed: "you like to keep things steady and see them through",
-    Mutable: "you adapt easily and enjoy variety",
-  };
-
   const pad2 = (n) => String(n).padStart(2, "0");
   function formatDegree(deg) {
     const d = Math.floor(deg);
@@ -519,19 +531,30 @@
     return "UTC" + sign + Math.floor(m / 60) + (m % 60 ? ":" + pad2(m % 60) : "");
   }
 
+  function storageGet(key) {
+    try {
+      return window.localStorage.getItem(key);
+    } catch (e) {
+      return null;
+    }
+  }
+  function storageSet(key, value) {
+    try {
+      if (value == null) window.localStorage.removeItem(key);
+      else window.localStorage.setItem(key, value);
+    } catch (e) { /* private mode: settings still work for this visit */ }
+  }
+
   function loadBirth() {
     try {
-      return JSON.parse(window.localStorage.getItem(STORAGE_KEY));
+      return JSON.parse(storageGet(STORAGE_KEY));
     } catch (e) {
       return null;
     }
   }
 
   function saveBirth(b) {
-    try {
-      if (b) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(b));
-      else window.localStorage.removeItem(STORAGE_KEY);
-    } catch (e) { /* private mode: the chart still works for this visit */ }
+    storageSet(STORAGE_KEY, b ? JSON.stringify(b) : null);
   }
 
   /** Saved birth details → Astro.chart input. */
@@ -571,25 +594,19 @@
   function readBirthForm() {
     const date = $("#birth-date").value;
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-    if (!m) return { error: "Please enter your date of birth." };
+    if (!m) return { error: t("ui.err_date") };
     const year = Number(m[1]);
-    if (year < 1800 || year > 2049) return { error: "The date of birth must be between 1800 and 2049." };
+    if (year < 1800 || year > 2049) return { error: t("ui.err_range") };
     const unknown = $("#birth-time-unknown").checked;
     const time = $("#birth-time").value;
-    if (!unknown && !/^\d{2}:\d{2}/.test(time)) {
-      return { error: "Please enter your time of birth, or tick “I don't know my birth time”." };
-    }
+    if (!unknown && !/^\d{2}:\d{2}/.test(time)) return { error: t("ui.err_time") };
     const latText = $("#birth-lat").value.trim(), lonText = $("#birth-lon").value.trim();
     const lat = latText === "" ? null : Number(latText), lon = lonText === "" ? null : Number(lonText);
     if ((lat == null) !== (lon == null) || (lat != null && (!(Math.abs(lat) <= 90) || !(Math.abs(lon) <= 180)))) {
-      return { error: "The coordinates aren't valid: latitude must be between -90 and 90, longitude between -180 and 180." };
+      return { error: t("ui.err_coords") };
     }
-    if (!unknown && lat == null) {
-      return { error: "Please choose your place of birth: it's needed to work out your rising sign." };
-    }
-    if (lat != null && Math.abs(lat) > 66) {
-      return { error: "Rising signs can't be calculated reliably inside the polar circles." };
-    }
+    if (!unknown && lat == null) return { error: t("ui.err_place") };
+    if (lat != null && Math.abs(lat) > 66) return { error: t("ui.err_polar") };
     const place = $("#birth-place").value.trim();
     return {
       birth: {
@@ -607,14 +624,14 @@
     const list = $("#place-results");
     const chosen = $("#place-chosen");
     if (q.length < 2) {
-      chosen.textContent = "Type at least two letters of your place of birth.";
+      chosen.textContent = t("ui.place_short");
       return;
     }
-    chosen.textContent = "Searching…";
+    chosen.textContent = t("ui.place_searching");
     list.hidden = true;
     try {
-      const res = await window.fetch("https://geocoding-api.open-meteo.com/v1/search?count=6&language=en&format=json&name=" +
-        encodeURIComponent(q.split(",")[0].trim()));
+      const res = await window.fetch("https://geocoding-api.open-meteo.com/v1/search?count=6&language=" + I.lang +
+        "&format=json&name=" + encodeURIComponent(q.split(",")[0].trim()));
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
       let results = data.results || [];
@@ -627,16 +644,16 @@
       placeResults.length = 0;
       results.filter((r) => r.timezone).forEach((r) => placeResults.push(r));
       if (!placeResults.length) {
-        chosen.textContent = "No places found. Check the spelling, or enter the coordinates manually.";
+        chosen.textContent = t("ui.place_none");
         return;
       }
       list.innerHTML = placeResults.map((r, i) =>
         '<li><button type="button" data-place="' + i + '">' + escapeHtml(placeLabel(r)) +
-        ' <small>' + r.latitude.toFixed(2) + ", " + r.longitude.toFixed(2) + "</small></button></li>").join("");
+        " <small>" + r.latitude.toFixed(2) + ", " + r.longitude.toFixed(2) + "</small></button></li>").join("");
       list.hidden = false;
-      chosen.textContent = "Choose your place of birth:";
+      chosen.textContent = t("ui.place_choose");
     } catch (e) {
-      chosen.textContent = "Couldn't reach the place search. Check your connection, or enter the coordinates manually.";
+      chosen.textContent = t("ui.place_offline");
     }
   }
 
@@ -656,25 +673,23 @@
   function bigPlacementHtml(key) {
     const c = chartState.chart;
     const p = c.byKey[key];
-    const role = { sun: "Sun sign", moon: "Moon sign", ascendant: "Rising sign" }[key];
+    const role = t("ui.big_" + key);
     if (!p) {
-      return '<article class="big-card missing"><p class="big-role">' + role + "</p><h3>Unknown</h3>" +
-        '<p class="hint">Your rising sign depends on the exact time and place of birth. Add your birth time to see it.</p></article>';
+      return '<article class="big-card missing"><p class="big-role">' + role + "</p><h3>" + t("ui.unknown") + "</h3>" +
+        '<p class="hint">' + t("ui.rising_unknown") + "</p></article>";
     }
     const s = p.sign;
-    const other = p.possibleSigns ? p.possibleSigns.find((x) => x !== s) : null;
+    const about = t("about_" + key);
     return (
       '<article class="big-card el-' + s.element.toLowerCase() + '" data-body="' + key + '">' +
       '<div class="big-head"><span class="big-glyph">' + s.glyph + "︎</span><div>" +
       '<p class="big-role">' + role + "</p>" +
-      "<h3>" + s.name + " <small>" + formatDegree(p.degree) + "</small></h3></div></div>" +
-      '<p class="big-about">' + escapeHtml(A.BODIES[key].about.charAt(0).toUpperCase() + A.BODIES[key].about.slice(1)) +
-      ": " + escapeHtml(s.traits) + ".</p>" +
-      '<p class="meta">' + s.element + " · " + s.modality + " · ruled by " + s.ruler + "</p>" +
-      (other ? '<p class="note">Without a birth time this is uncertain: the ' + A.BODIES[key].name + " moved from " +
-        escapeHtml(p.possibleSigns[0].name) + " into " + escapeHtml(p.possibleSigns[1].name) + " that day.</p>" : "") +
-      '<div class="linked-cards">' + miniCardHtml(s.card, s.name) +
-      miniCardHtml(p.decan.card, p.decan.planet + " in " + s.name) + "</div>" +
+      "<h3>" + signName(s) + " <small>" + formatDegree(p.degree) + "</small></h3></div></div>" +
+      '<p class="big-about">' + escapeHtml(about.charAt(0).toUpperCase() + about.slice(1)) + ": " + escapeHtml(t("traits_" + s.name)) + ".</p>" +
+      '<p class="meta">' + escapeHtml(t("ui.big_meta", { element: t("el_" + s.element), modality: t("mod_" + s.modality), ruler: t("planet_" + s.ruler) })) + "</p>" +
+      (p.possibleSigns ? '<p class="note">' + escapeHtml(t("ui.uncertain", { body: t("body_" + key), a: signName(p.possibleSigns[0]), b: signName(p.possibleSigns[1]) })) + "</p>" : "") +
+      '<div class="linked-cards">' + miniCardHtml(s.card, signName(s)) +
+      miniCardHtml(p.decan.card, t("decan_label", { planet: t("planet_" + p.decan.planet), sign: signName(s) })) + "</div>" +
       "</article>"
     );
   }
@@ -689,8 +704,8 @@
     }
     const b = chartState.saved;
     const [y, mo, d] = b.date.split("-").map(Number);
-    const bornLine = "Born " + d + " " + MONTH_NAMES[mo - 1] + " " + y +
-      (c.timeKnown ? " at " + b.time : " (time unknown)") + (b.place ? " in " + b.place : "") +
+    const bornLine = t("ui.born", { date: t("date", { d, month: t("months")[mo - 1], y }) }) +
+      (c.timeKnown ? t("ui.born_at", { time: b.time }) : t("ui.born_unknown")) + (b.place ? t("ui.born_in", { place: b.place }) : "") +
       " · " + b.timeZone + " (" + formatOffset(A.tzOffsetMinutes(b.timeZone, c.utc)) + ")";
 
     const rows = ["sun", "moon", "mercury", "venus", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto", "ascendant", "midheaven"]
@@ -698,57 +713,59 @@
       .map((k) => {
         const p = c.byKey[k];
         const body = A.BODIES[k];
-        return '<tr data-body="' + k + '"><td><span class="glyph">' + body.glyph + "︎</span> " + body.name +
-          (body.card ? " · " + cardLinkHtml(body.card) : "") + "<small>" + escapeHtml(body.about) + "</small></td>" +
-          "<td>" + p.sign.glyph + "︎ " + p.sign.name + (p.possibleSigns ? " <small>or " + p.possibleSigns.find((x) => x !== p.sign).name + "</small>" : "") + "</td>" +
-          "<td>" + formatDegree(p.degree) + (p.retrograde ? ' <span class="retro" title="Retrograde">℞</span>' : "") + "</td>" +
+        return '<tr data-body="' + k + '"><td><span class="glyph">' + body.glyph + "︎</span> " + t("body_" + k) +
+          (body.card ? " · " + cardLinkHtml(body.card) : "") + "<small>" + escapeHtml(t("about_" + k)) + "</small></td>" +
+          "<td>" + p.sign.glyph + "︎ " + signName(p.sign) +
+          (p.possibleSigns ? " <small>" + t("ui.or") + " " + signName(p.possibleSigns.find((x) => x !== p.sign)) + "</small>" : "") + "</td>" +
+          "<td>" + formatDegree(p.degree) + (p.retrograde ? ' <span class="retro" title="' + t("ui.retrograde") + '">℞</span>' : "") + "</td>" +
           "<td>" + cardLinkHtml(p.sign.card) + " · " + cardLinkHtml(p.decan.card) + "</td></tr>";
       }).join("");
 
     const total = Object.values(c.elements).reduce((a, v) => a + v, 0);
     const bars = Object.keys(c.elements).map((e) =>
-      '<div class="el-bar el-' + e.toLowerCase() + '"><span>' + e + " · " + A.ELEMENTS[e].suitName + "</span>" +
+      '<div class="el-bar el-' + e.toLowerCase() + '"><span>' + t("el_" + e) + " · " + t("suit_" + A.ELEMENTS[e].suit) + "</span>" +
       '<div class="el-track"><div style="width:' + ((c.elements[e] / total) * 100).toFixed(0) + '%"></div></div>' +
       "<b>" + c.elements[e] + "</b></div>").join("");
     const dom = c.dominantElement;
-    const joinAnd = (list) => list.join(", ").replace(/, ([^,]*)$/, " and $1");
+    const elName = (e) => t("el_" + e);
     const elementText = dom
-      ? "Your strongest element is <b>" + dom + "</b> (" + escapeHtml(A.ELEMENTS[dom].traits) + "), so your tarot suit is <b>" +
-        A.ELEMENTS[dom].suitName + "</b>."
-      : "Your chart is balanced between <b>" + joinAnd(c.strongestElements) + "</b>, so your suits are " +
-        joinAnd(c.strongestElements.map((e) => A.ELEMENTS[e].suitName)) + ".";
+      ? t("ui.el_strongest", { element: elName(dom), traits: escapeHtml(t("eltraits_" + dom)), suit: t("suit_" + A.ELEMENTS[dom].suit) })
+      : t("ui.el_balanced", { elements: I.joinList(c.strongestElements.map(elName)),
+        suits: I.joinList(c.strongestElements.map((e) => t("suit_" + A.ELEMENTS[e].suit))) });
     const mode = c.dominantModality;
     const modeText = mode
-      ? " Your strongest mode is <b>" + mode + "</b>: " + MODALITY_TEXT[mode] + "."
-      : " Your modes are balanced between " + joinAnd(c.strongestModalities) + ".";
+      ? t("ui.mode_strongest", { mode: t("mod_" + mode), text: t("ui.mode_" + mode) })
+      : t("ui.mode_balanced", { modes: I.joinList(c.strongestModalities.map((m) => t("mod_" + m))) });
     const missing = c.missingElements.length
-      ? " You have nothing in " + c.missingElements.join(" or ") + ", so " +
-        c.missingElements.map((e) => A.ELEMENTS[e].traits).join(" and ") + " may take more effort."
+      ? t("ui.el_missing", { elements: I.joinList(c.missingElements.map(elName), "list_or"),
+        traits: I.joinList(c.missingElements.map((e) => t("eltraits_" + e))) })
       : "";
 
     const sky = A.sky(new Date());
-    const skyLine = (label, p) => "<p>" + label + " is in <b>" + p.sign.name + "</b> (" + formatDegree(p.degree) + "): " +
-      cardLinkHtml(p.sign.card) + " · " + cardLinkHtml(p.decan.card) + " <small>(" + p.decan.planet + " in " + p.sign.name + ")</small></p>";
+    const skyLine = (label, p) => "<p>" + t("ui.sky_line", { body: label, sign: signName(p.sign), degree: formatDegree(p.degree),
+      cards: cardLinkHtml(p.sign.card) + " · " + cardLinkHtml(p.decan.card) + " <small>(" +
+        escapeHtml(t("decan_label", { planet: t("planet_" + p.decan.planet), sign: signName(p.sign) })) + ")</small>" }) + "</p>";
 
     el.innerHTML =
-      '<div class="panel chart-head"><h2>' + escapeHtml(b.name ? b.name + "'s chart" : "Your chart") + "</h2>" +
+      '<div class="panel chart-head"><h2>' + escapeHtml(b.name ? t("ui.chart_of", { name: b.name }) : t("ui.your_chart")) + "</h2>" +
       '<p class="hint">' + escapeHtml(bornLine) + "</p>" +
-      (c.timeKnown ? "" : '<p class="note">Without a birth time, the rising sign can\'t be worked out and the Moon\'s degree is approximate (it moves about 13° a day).</p>') +
+      (c.timeKnown ? "" : '<p class="note">' + t("ui.no_time_note") + "</p>") +
       "</div>" +
       '<div class="big-three">' + ["sun", "moon", "ascendant"].map(bigPlacementHtml).join("") + "</div>" +
-      '<div class="panel"><h3>Your tarot cards</h3>' +
-      '<p class="hint">These cards are tied to your chart. When one of them comes up in a reading, it is marked as personal.</p>' +
+      '<div class="panel"><h3>' + t("ui.your_cards") + "</h3>" +
+      '<p class="hint">' + t("ui.your_cards_hint") + "</p>" +
       '<div class="personal-grid">' + chartState.links.map((l) =>
-        '<figure class="personal-item" data-role="' + escapeHtml(l.role) + '">' + miniCardHtml(l.card) +
+        '<figure class="personal-item" data-role="' + l.roleKey + '">' + miniCardHtml(l.card) +
         "<figcaption><b>" + escapeHtml(l.role) + "</b>" + escapeHtml(l.why) + "</figcaption></figure>").join("") + "</div></div>" +
-      '<div class="panel"><h3>Planets</h3><div class="table-wrap"><table class="planet-table">' +
-      "<thead><tr><th>Planet</th><th>Sign</th><th>Degree</th><th>Tarot (sign · decan)</th></tr></thead><tbody>" + rows + "</tbody></table></div>" +
-      '<p class="hint">℞ = retrograde (the planet appears to move backwards).</p></div>' +
-      '<div class="panel"><h3>Elements</h3><div class="el-bars">' + bars + "</div>" +
+      '<div class="panel"><h3>' + t("ui.planets") + '</h3><div class="table-wrap"><table class="planet-table">' +
+      "<thead><tr><th>" + t("ui.th_planet") + "</th><th>" + t("ui.th_sign") + "</th><th>" + t("ui.th_degree") + "</th><th>" + t("ui.th_tarot") + "</th></tr></thead>" +
+      "<tbody>" + rows + "</tbody></table></div>" +
+      '<p class="hint">' + t("ui.retro_hint") + "</p></div>" +
+      '<div class="panel"><h3>' + t("ui.elements") + '</h3><div class="el-bars">' + bars + "</div>" +
       '<p class="element-summary">' + elementText + escapeHtml(missing) + modeText + "</p>" +
-      '<p class="hint">Counted over the Sun, Moon and Rising (double) and Mercury to Saturn.</p></div>' +
-      '<div class="panel"><h3>The sky today</h3>' + skyLine("The Sun", sky.sun) + skyLine("The Moon", sky.moon) +
-      '<p class="hint">The Sun\'s decan card is the card of these ten days, good for reflection.</p></div>';
+      '<p class="hint">' + t("ui.el_counted") + "</p></div>" +
+      '<div class="panel"><h3>' + t("ui.sky") + "</h3>" + skyLine(t("ui.sky_sun"), sky.sun) + skyLine(t("ui.sky_moon"), sky.moon) +
+      '<p class="hint">' + t("ui.sky_hint") + "</p></div>";
     el.hidden = false;
   }
 
@@ -818,6 +835,42 @@
     setChart(null);
   }
 
+  // -------------------------------------------------------------- language
+  /** Static text in index.html: data-i18n (text), data-i18n-html (markup),
+   *  data-i18n-placeholder / -aria-label, and data-lang blocks (About page). */
+  function applyStaticText() {
+    document.documentElement.lang = I.lang === "pt" ? "pt-PT" : "en";
+    document.title = t("ui.title");
+    document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    document.querySelectorAll("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
+    document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => { el.placeholder = t(el.dataset.i18nPlaceholder); });
+    document.querySelectorAll("[data-i18n-aria-label]").forEach((el) => { el.setAttribute("aria-label", t(el.dataset.i18nAriaLabel)); });
+    document.querySelectorAll("[data-lang]").forEach((el) => { el.hidden = el.dataset.lang !== I.lang; });
+  }
+
+  function setLanguage(code) {
+    I.setLanguage(code);
+    storageSet(LANG_KEY, code);
+    $("#lang-select").value = code;
+    applyStaticText();
+    renderSpreadChoice();
+    renderQuestionHint();
+    renderAll();
+    renderGuideFilters();
+    renderGuideGrid();
+    if (chartState.saved) setChart(chartState.saved); // personal card texts are generated in the language
+    else renderChartStatus();
+    if (state.status) $("#status").textContent = state.status();
+    if (state.dialogCard && $("#card-dialog").hasAttribute("open")) renderCardDialog(state.dialogCard);
+  }
+
+  function initialLanguage() {
+    const saved = storageGet(LANG_KEY);
+    if (saved && I.LANGS[saved]) return saved;
+    const browser = (navigator.languages && navigator.languages[0]) || navigator.language || "en";
+    return /^pt\b/i.test(browser) ? "pt" : "en";
+  }
+
   // ------------------------------------------------------------------ menu
   function showView(name) {
     document.querySelectorAll(".menu-item").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
@@ -827,6 +880,14 @@
 
   // ------------------------------------------------------------------ init
   function init() {
+    const langSelect = $("#lang-select");
+    langSelect.innerHTML = Object.keys(I.LANGS).map((code) =>
+      '<option value="' + code + '">' + escapeHtml(I.LANGS[code]) + "</option>").join("");
+    langSelect.addEventListener("change", () => setLanguage(langSelect.value));
+    I.setLanguage(initialLanguage());
+    langSelect.value = I.lang;
+    applyStaticText();
+
     document.querySelectorAll(".menu-item").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
 
     $("#btn-shuffle").addEventListener("click", doShuffle);
@@ -835,9 +896,9 @@
     $("#reversals").addEventListener("change", () => {
       state.reversals = $("#reversals").checked;
       if (state.pile && state.drawn.length === 0) {
-        resetReading("Reversals " + (state.reversals ? "on" : "off") + ". Shuffle again to apply.");
+        resetReading(() => t("ui.status_reversals", { state: t(state.reversals ? "ui.reversals_on" : "ui.reversals_off") }));
       } else if (state.drawn.length > 0) {
-        setStatus("Reversal setting will apply to your next reading.");
+        setStatus(() => t("ui.status_reversals_next"));
       }
     });
 
@@ -871,7 +932,10 @@
 
     $("#question").addEventListener("input", () => {
       renderQuestionHint();
-      if (phase() === "complete") renderSummary();
+      if (phase() === "complete") {
+        renderSummary();
+        setStatus(completeStatus);
+      }
     });
 
     renderSpreadChoice();
@@ -880,6 +944,6 @@
     initChart();
   }
 
-  window.TarotApp = { state, chartState }; // handy for debugging in the console
+  window.TarotApp = { state, chartState, setLanguage }; // handy for debugging in the console
   init();
 })();

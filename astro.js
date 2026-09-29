@@ -13,6 +13,9 @@
 (function (root) {
   "use strict";
 
+  const I18N = root.I18N || require("./i18n.js");
+  const t = I18N.t;
+
   const RAD = Math.PI / 180;
   const norm = (deg) => ((deg % 360) + 360) % 360;
   const sin = (deg) => Math.sin(deg * RAD);
@@ -434,35 +437,35 @@
     "The Hanged Man", "Death", "Temperance", "The Devil", "The Tower", "The Star", "The Moon", "The Sun",
     "Judgement", "The World"];
 
-  /** List of { card, role, why } linking tarot cards to a chart. `today` (a
-   *  Date) sets the year card; it defaults to now. */
+  /** List of { card, roleKey, role, why } linking tarot cards to a chart,
+   *  with `role` and `why` in the current language. `today` (a Date) sets
+   *  the year card; it defaults to now. Cards are identified by English name. */
   function personalCards(c, today) {
     const links = [];
-    const add = (card, role, why) => links.push({ card, role, why });
+    const add = (card, roleKey, why) => links.push({ card, roleKey, role: t("role_" + roleKey), why });
+    const cardName = (name) => { const pt = I18N.cardText(name); return pt ? pt.name : name; };
+    const sign = (s) => t("sign_" + s.name);
     const now = today || new Date();
-    const big = [["sun", "Sun"], ["moon", "Moon"], ["ascendant", "Rising"]];
-    big.forEach(([key, label]) => {
+    ["sun", "moon", "ascendant"].forEach((key) => {
       const p = c.byKey[key];
       if (!p) return;
-      add(p.sign.card, label + " sign", label + " in " + p.sign.name + ": " + p.sign.card + " is the card of " + p.sign.name + ".");
-      add(p.decan.card, label + " decan",
-        label + " at " + Math.floor(p.degree) + "° " + p.sign.name + " falls in the decan of " + p.decan.planet +
-        " in " + p.sign.name + ", ruled by the " + p.decan.card + ".");
+      const label = t("body_" + key);
+      add(p.sign.card, key + "_sign", t("why_sign", { label, sign: sign(p.sign), card: cardName(p.sign.card) }));
+      add(p.decan.card, key + "_decan", t("why_decan", { label, deg: Math.floor(p.degree), sign: sign(p.sign),
+        planet: t("planet_" + p.decan.planet), card: cardName(p.decan.card) }));
     });
     const sun = c.byKey.sun.sign;
-    add(courtCardFor(sun), "Court card",
-      "Your court card: the " + courtCardFor(sun) + " rules " + sun.name + " (" + sun.modality.toLowerCase() + " " + sun.element.toLowerCase() + ").");
+    add(courtCardFor(sun), "court", t("why_court", { card: cardName(courtCardFor(sun)), sign: sign(sun),
+      modality: t("mod_" + sun.modality).toLowerCase(), element: t("el_" + sun.element).toLowerCase() }));
     const b = c.birth;
     birthCards(b.year, b.month, b.day).forEach((n, i, all) => {
-      add(MAJOR_NAMES[n], "Birth card",
-        (all.length === 1 ? "Your birth card" : i === 0 ? "Your personality card" : i === all.length - 1 ? "Your soul card" : "A birth card") +
-        " from tarot numerology (" + b.month + " + " + b.day + " + " + b.year + ").");
+      const what = all.length === 1 ? "one" : i === 0 ? "first" : i === all.length - 1 ? "last" : "middle";
+      add(MAJOR_NAMES[n], "birth", t("why_birth", { what: t("why_birth_" + what), m: b.month, d: b.day, y: b.year }));
     });
     // The personal year runs from birthday to birthday.
     const beforeBirthday = now.getMonth() + 1 < b.month || (now.getMonth() + 1 === b.month && now.getDate() < b.day);
     const y = now.getFullYear() - (beforeBirthday ? 1 : 0);
-    add(MAJOR_NAMES[yearCard(b.month, b.day, y)], "Year card",
-      "Your card of the year for your birthday " + y + "–" + (y + 1) + " (" + b.month + " + " + b.day + " + " + y + ").");
+    add(MAJOR_NAMES[yearCard(b.month, b.day, y)], "year", t("why_year", { y, y2: y + 1, m: b.month, d: b.day }));
     return links;
   }
 

@@ -11,6 +11,8 @@ const { JSDOM } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8").replace(/<script[^>]*><\/script>/g, "");
+const i18nSrc = fs.readFileSync(path.join(ROOT, "i18n.js"), "utf8");
+const cardsPtSrc = fs.readFileSync(path.join(ROOT, "cards-pt.js"), "utf8");
 const astroSrc = fs.readFileSync(path.join(ROOT, "astro.js"), "utf8");
 const deckSrc = fs.readFileSync(path.join(ROOT, "deck.js"), "utf8");
 const appSrc = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
@@ -34,6 +36,12 @@ function load(options) {
   w.HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   w.HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   w.confirm = () => true;
+  if (opts.language) {
+    Object.defineProperty(w.navigator, "language", { value: opts.language });
+    Object.defineProperty(w.navigator, "languages", { value: [opts.language] });
+  }
+  w.eval(i18nSrc);
+  w.eval(cardsPtSrc);
   w.eval(astroSrc);
   w.eval(deckSrc);
   w.eval(appSrc);
@@ -467,7 +475,7 @@ test("birth chart: without a birth time there is no rising sign; bad input shows
   assert.match(app.$('.big-card.missing h3').textContent, /Unknown/);
   assert.match(app.$(".chart-head .note").textContent, /rising sign can't be worked out/);
   assert.equal(app.$$(".planet-table tbody tr").length, 10);
-  assert.equal(app.$$('.personal-item[data-role="Rising sign"]').length, 0);
+  assert.equal(app.$$('.personal-item[data-role="ascendant_sign"]').length, 0);
   // Corrupt saved data is ignored instead of breaking the app.
   const broken = load({ storage: { "arcana.birth": "{not json" } });
   assert.equal(broken.$("#chart-result").hidden, true);
@@ -525,4 +533,112 @@ test("readings mark personal cards and compare the elements with the chart", asy
   for (let k = 0; k < 3; k++) enabledFan(plain)[0].click();
   assert.equal(plain.$("#summary .chart-links"), null);
   assert.equal(plain.$(".personal-note"), null);
+});
+
+// ---------------------------------------------------------------------------
+// Languages
+// ---------------------------------------------------------------------------
+const ENGLISH_WORDS = /(?<![\p{L}])(the|and|you|your|with|this|that|is|are|of|card|cards|reversed|upright|reading|shuffle|spread|yes)(?![\p{L}])/iu;
+function chooseLanguage(app, code) {
+  app.$("#lang-select").value = code;
+  app.$("#lang-select").dispatchEvent(new app.w.Event("change"));
+}
+const visibleText = (el) => [...el.querySelectorAll("*")]
+  .filter((e) => !e.closest("[hidden]") && !e.children.length).map((e) => e.textContent).join(" ");
+
+test("the language menu switches the whole app to Portuguese and back", async () => {
+  const app = load();
+  assert.deepEqual(app.$$("#lang-select option").map((o) => o.textContent), ["English", "Português"]);
+  assert.equal(app.$("#lang-select").value, "en");
+  const q = app.$("#question");
+  q.value = "Vou passar no teste amanhã?";
+  q.dispatchEvent(new app.w.Event("input"));
+  chooseLanguage(app, "pt");
+
+  assert.equal(app.w.document.documentElement.lang, "pt-PT");
+  assert.equal(app.w.document.title, "Arcana · Leitura de Tarot");
+  assert.deepEqual(app.$$(".menu-item").map((b) => b.textContent), ["Leitura", "Guia das Cartas", "Mapa Astral", "Como funciona"]);
+  assert.equal(app.$("#btn-shuffle").textContent, "🔀 Baralhar as cartas");
+  assert.match(app.$("#spread-choice").textContent, /Passado · Presente · Futuro \(3\)/);
+  assert.match(app.$("#question-hint").textContent, /^✓ Pergunta de sim\/não/);
+  assert.equal(app.$('[data-lang="pt"]').hidden, false);
+  assert.equal(app.$('[data-lang="en"]').hidden, true);
+  assert.equal(app.w.localStorage.getItem("arcana.lang"), "pt");
+
+  await shuffle(app);
+  assert.match(app.$("#status").textContent, /^Cartas baralhadas/);
+  for (let k = 0; k < 3; k++) enabledFan(app)[Math.floor(Math.random() * (78 - k))].click();
+  const drawn = app.w.TarotApp.state.drawn;
+  app.w.I18N.setLanguage("pt"); // (already pt) compute the expected texts in Portuguese
+  for (const e of app.$$(".explain")) {
+    const d = drawn[Number(e.dataset.position)];
+    const text = app.T.text(d.card);
+    assert.ok(e.querySelector(".explain-name").textContent.startsWith(text.name));
+    assert.equal(e.querySelector(".meaning").textContent, text.meaning[d.reversed ? "reversed" : "upright"]);
+    assert.equal(e.querySelector(".badge").textContent, d.reversed ? "Invertida" : "Direita");
+  }
+  const expected = app.T.yesNoReading(drawn, "three");
+  assert.equal(app.$("#summary .answer-label").textContent, expected.verdict.label);
+  assert.equal(app.$("#summary .answer-sentence").textContent, app.T.answerSentence(q.value, expected.verdict.key));
+  assert.match(app.$("#summary .answer-sentence").textContent, /passar no teste amanhã\.$/);
+  assert.match(app.$("#status").textContent, /^Leitura completa\. A tua resposta: /);
+  assert.equal(app.$("#summary h2").textContent, "A tua leitura");
+  const ptText = visibleText(app.$("#view-reading")).replace(/Rider–Waite–Smith/g, "");
+  assert.doesNotMatch(ptText, ENGLISH_WORDS, ptText);
+
+  // Back to English, in the middle of the same reading.
+  chooseLanguage(app, "en");
+  assert.equal(app.$(".menu-item").textContent, "Reading");
+  assert.match(app.$("#status").textContent, /^Reading complete\./);
+  for (const e of app.$$(".explain")) {
+    const d = drawn[Number(e.dataset.position)];
+    assert.ok(e.querySelector(".explain-name").textContent.startsWith(d.card.name));
+  }
+  assert.equal(app.$("#summary h2").textContent, "Your reading");
+  assert.equal(app.w.localStorage.getItem("arcana.lang"), "en");
+});
+
+test("the language is remembered, and defaults to the browser's language", () => {
+  assert.equal(load({ language: "pt-PT" }).$("#lang-select").value, "pt");
+  assert.equal(load({ language: "pt-BR" }).$(".menu-item").textContent, "Leitura");
+  assert.equal(load({ language: "fr-FR" }).$("#lang-select").value, "en");
+  assert.equal(load({ language: "pt-PT", storage: { "arcana.lang": "en" } }).$("#lang-select").value, "en");
+  assert.equal(load({ storage: { "arcana.lang": "pt" } }).$(".menu-item").textContent, "Leitura");
+  assert.equal(load({ storage: { "arcana.lang": "klingon" } }).$("#lang-select").value, "en");
+});
+
+test("Card Guide and card descriptions in Portuguese", () => {
+  const app = load({ language: "pt-PT" });
+  assert.deepEqual(app.$$("#guide-filter button").map((b) => b.textContent), ["Todas", "Arcanos Maiores", "Paus", "Copas", "Espadas", "Ouros"]);
+  app.$("#guide-search").value = "esperança";
+  app.$("#guide-search").dispatchEvent(new app.w.Event("input"));
+  const found = app.$$("#guide-grid .guide-item").map((b) => b.getAttribute("aria-label"));
+  assert.ok(found.includes("A Estrela"), found.join(", "));
+  app.$('#guide-grid .guide-item[aria-label="A Estrela"]').click();
+  assert.equal(app.$("#card-dialog-body h2").textContent, "A Estrela");
+  assert.match(app.$("#card-dialog-body .meta").textContent, /^Arcano Maior XVII · Aquário$/);
+  assert.match(app.$("#card-dialog-body .meaning-upright").textContent, /^Depois da tempestade vem a cura/);
+  // Switching language while the card is open updates it.
+  chooseLanguage(app, "en");
+  assert.equal(app.$("#card-dialog-body h2").textContent, "The Star");
+  assert.match(app.$("#card-dialog-body .meaning-upright").textContent, /^After the storm comes healing/);
+});
+
+test("birth chart in Portuguese", () => {
+  const app = load({ language: "pt-PT" });
+  fillBirth(app, LISBON);
+  submitBirth(app);
+  assert.equal(app.$(".chart-head h2").textContent, "Mapa de Ana");
+  assert.match(app.$(".chart-head .hint").textContent, /^Nascimento: 15 de julho de 1990 às 14:30 em Lisbon, Portugal/);
+  assert.match(app.$('.big-card[data-body="sun"] h3').textContent, /^Caranguejo/);
+  assert.match(app.$('.big-card[data-body="moon"] h3').textContent, /^Carneiro/);
+  assert.match(app.$('.big-card[data-body="ascendant"] h3').textContent, /^Balança/);
+  assert.match(app.$(".element-summary").textContent, /equilibrado entre Fogo, Ar e Água, por isso os teus naipes são Paus, Espadas e Copas/);
+  assert.match(app.$("#chart-status").textContent, /☉ Caranguejo · ☽ Carneiro · Ascendente Balança/);
+  const text = visibleText(app.$("#chart-result")).replace(/Lisbon, Portugal|Europe\/Lisbon/g, "");
+  assert.doesNotMatch(text, ENGLISH_WORDS, text);
+  // Errors are translated too.
+  fillBirth(app, { date: "" });
+  submitBirth(app);
+  assert.equal(app.$("#birth-error").textContent, "Indica a tua data de nascimento.");
 });
