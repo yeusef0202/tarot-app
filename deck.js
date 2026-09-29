@@ -9,6 +9,10 @@
 (function (root) {
   "use strict";
 
+  // Zodiac data and the Sun's position (for timing questions). In the browser
+  // astro.js is loaded first.
+  const Astro = root.Astro || require("./astro.js");
+
   // ---------------------------------------------------------------------------
   // Major Arcana (0–21). Astrology follows the Golden Dawn attributions; the
   // Fool, Hanged Man and Judgement also show their modern outer-planet rulers.
@@ -663,6 +667,7 @@
         element: null,
         astro: c.astro,
         glyph: c.glyph,
+        astrology: Astro.cardAstrology(c.name),
         keywords: { upright: c.up, reversed: c.rev },
         meaning: { upright: c.upright, reversed: c.reversed },
         image: c.image,
@@ -673,16 +678,23 @@
       const suit = SUITS[suitKey];
       MINOR_ARCANA[suitKey].forEach((c, i) => {
         const rank = RANKS[i];
+        const name = rank + " of " + suit.name;
+        // Golden Dawn: the 2–10 each rule a decan ("Mars in Aries"), court
+        // cards a sign, and Aces and Pages a season.
+        const astrology = Astro.cardAstrology(name);
         deck.push({
           id: suitKey + "-" + String(i + 1).padStart(2, "0"),
           arcana: "minor",
           number: i + 1,
           rank: rank,
           court: i >= 10,
-          name: rank + " of " + suit.name,
+          name: name,
           suit: suitKey,
           element: suit.element,
-          astro: null,
+          astro: astrology.kind === "season"
+            ? astrology.label[0].toUpperCase() + astrology.label.slice(1)
+            : astrology.label,
+          astrology: astrology,
           keywords: { upright: c.up, reversed: c.rev },
           meaning: { upright: c.upright, reversed: c.reversed },
           image: c.image,
@@ -811,6 +823,20 @@
           weight: 2, lead: "And it all points toward" },
       ],
     },
+    choice: {
+      name: "Two Paths",
+      description: "For either/or decisions (“Should I stay or go?”): one card for each option, plus where you stand and advice.",
+      positions: [
+        { name: "Where you stand", meaning: "Your current situation and what the decision is really about.",
+          weight: 0.5, lead: "You stand at a crossroads marked by" },
+        { name: "Path A", meaning: "What happens if you choose the first option.",
+          weight: 1, lead: "The first path leads to" },
+        { name: "Path B", meaning: "What happens if you choose the second option.",
+          weight: 1, lead: "The second path leads to" },
+        { name: "Advice", meaning: "What will help you decide well.",
+          weight: 1, lead: "The advice is" },
+      ],
+    },
   };
 
   // ---------------------------------------------------------------------------
@@ -879,8 +905,13 @@
   /** Does the question look like a yes/no question ("Will I…?", "Should I…?")?
    *  Either/or questions ("Should I take job A or job B?") are not. */
   function isYesNoQuestion(question) {
-    const q = String(question || "").trim();
+    const q = stripOrNot(String(question || "").trim());
     return YES_NO_START.test(q) && !/\bor\b/i.test(q);
+  }
+
+  // "Should I go or not?" is still a yes/no question.
+  function stripOrNot(q) {
+    return q.replace(/,?\s+or\s+not\s*([?.!]*)$/i, "$1");
   }
 
   // First person → second person, so "my test" becomes "your test".
@@ -900,7 +931,7 @@
    *  "Yes, you will pass your test tomorrow." Returns null when the question
    *  can't be rephrased safely (the generic verdict label is used instead). */
   function answerSentence(question, verdictKey) {
-    const words = String(question || "").trim().replace(/[?.!\s]+$/, "").split(/\s+/);
+    const words = stripOrNot(String(question || "").trim()).replace(/[?.!\s]+$/, "").split(/\s+/);
     if (words.length < 2 || !isYesNoQuestion(question)) return null;
     let aux = words[0].toLowerCase();
     if (!NEGATIVES[aux]) return null;
@@ -996,10 +1027,320 @@
     return sentences.join(" ");
   }
 
+  // ---------------------------------------------------------------------------
+  // Open questions: timing, cause, people, places, advice, choices, outlook
+  // ---------------------------------------------------------------------------
+  const QUESTION_TYPES = {
+    yesno: { label: "Yes / No", hint: "✓ Yes/no question: you'll get a yes/no answer when the spread is complete." },
+    choice: { label: "Choice", hint: "Either/or question: the Two Paths spread gives each option its own card." },
+    when: { label: "Timing", hint: "Timing question: the cards' astrology will suggest when." },
+    why: { label: "Cause", hint: "“Why” question: the cards will show the root of the situation." },
+    who: { label: "Person", hint: "“Who” question: court cards will describe the person." },
+    where: { label: "Place", hint: "“Where” question: the elements of the cards will point to a place." },
+    advice: { label: "Advice", hint: "Advice question: the cards will say what to focus on and what to avoid." },
+    outlook: { label: "Outlook", hint: "Open question: you'll get the overall outlook and a reading of all the cards together." },
+  };
+
+  const OPTION_PREFIX = new RegExp(
+    "^(?:(?:is it|would it be) (?:better|best|wiser) (?:to|if (?:i|we))\\s+|" +
+    "(?:will|would|can|could|should|shall|do|does|did|am|is|are|was|were|have|has|may|might|must)\\s+" +
+    "(?:i|we|you|he|she|it|they|there)\\s+)", "i");
+
+  /** "Should I take the job or stay at university?" → ["take the job", "stay at university"].
+   *  Returns null unless there are exactly two options. */
+  function splitOptions(question) {
+    let q = String(question || "").trim().replace(/[?.!\s]+$/, "");
+    const tail = q.split(/[,:;]\s*/).pop(); // "Which is better, A or B"
+    if (tail !== q && /\s+or\s+/i.test(tail)) q = tail;
+    q = q.replace(OPTION_PREFIX, "");
+    const parts = q.split(/\s+or\s+/i).map((s) => s.replace(/[,;:]+$/, "").trim()).filter(Boolean);
+    if (parts.length !== 2 || /^not$/i.test(parts[1])) return null;
+    return parts.map(swapPronouns);
+  }
+
+  /** Type of question: yesno, choice, when, why, who, where, advice or outlook. */
+  function classifyQuestion(question) {
+    const q = String(question || "").trim().toLowerCase();
+    if (!q) return null;
+    if (isYesNoQuestion(q)) return "yesno";
+    if (/\bor\b/.test(q) && splitOptions(q)) return "choice";
+    if (/^(when|how (long|soon)|what (time|day|week|month|year)|by when)\b/.test(q)) return "when";
+    if (/^(why|what (caused|is causing|causes|is behind|is the reason))\b/.test(q)) return "why";
+    if (/^(who|which person)\b/.test(q)) return "who";
+    if (/^where\b/.test(q)) return "where";
+    if (/^(how (can|could|do|should|to|may|might) |what (should|can|could|must) (i|we) |what do (i|we) (need to |have to )?do\b|what would help|any advice|advice\b)/.test(q)) return "advice";
+    return "outlook";
+  }
+
+  const orientation = (d) => (d.reversed ? "reversed" : "upright");
+  const pair = (d) => { const kw = d.card.keywords[orientation(d)]; return kw[0] + " and " + kw[1]; };
+  const ref = (d) => d.card.name + (d.reversed ? ", reversed" : "");
+  const meaningOf = (d) => d.card.meaning[orientation(d)];
+  const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  /** The card in the most important position (the Outcome, the Future…). */
+  function mainItem(items) {
+    return items.reduce((best, it) => (it.position.weight >= best.position.weight ? it : best));
+  }
+
+  /** Element of a card: its suit, or for the Major Arcana its sign's element. */
+  function elementOf(card) {
+    if (card.element) return card.element;
+    if (card.astrology && card.astrology.sign) return card.astrology.sign.element;
+    const m = /^(Fire|Water|Air|Earth)\b/.exec(card.astro || "");
+    return m ? m[1] : null;
+  }
+
+  const OUTLOOKS = {
+    yes: ["favourable", "Most of the cards support you. This is a good time to move forward."],
+    likely_yes: ["mostly favourable", "The cards are mostly supportive, with a few things to watch."],
+    unclear: ["mixed", "The cards are mixed: the result depends on the choices you make."],
+    likely_no: ["challenging", "There are obstacles to work through; the individual cards show where."],
+    no: ["difficult", "This is a hard period for this matter. Be patient and look after yourself."],
+  };
+
+  const PERSONA = {
+    Page: "a young person, a student or someone bringing news",
+    Knight: "an energetic person on the move",
+    Queen: "a mature, caring person who leads from within",
+    King: "a mature person in authority",
+  };
+
+  // Golden Dawn directions of the elements, and the kinds of places they rule.
+  const PLACES = {
+    Fire: { direction: "south", places: "somewhere lively and active: a gym, a stage, a busy workplace or outdoors in the sun" },
+    Water: { direction: "west", places: "somewhere near water or full of feeling: home, a café or bar, the sea or a river" },
+    Air: { direction: "east", places: "somewhere busy with people and ideas: a city, a school, an office, online or while travelling" },
+    Earth: { direction: "north", places: "somewhere quiet and practical: home, a garden, a shop, a bank or the countryside" },
+  };
+
+  // Traditional timing by suit.
+  const PACE = {
+    wands: "fast, within days",
+    swords: "quick, within days or weeks",
+    cups: "moderate, within weeks or months",
+    pentacles: "slow and steady, within months",
+  };
+
+  const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August",
+    "September", "October", "November", "December"];
+  const formatDate = (ms) => {
+    const d = new Date(ms);
+    return d.getUTCDate() + " " + MONTHS[d.getUTCMonth()] + " " + d.getUTCFullYear();
+  };
+
+  /** "20–30 March 2027", "21 June – 22 September 2027" or "22 December 2026 – 20 March 2027". */
+  function formatRange(startMs, endMs) {
+    const a = new Date(startMs), b = new Date(endMs);
+    if (a.getUTCFullYear() !== b.getUTCFullYear()) return formatDate(startMs) + " – " + formatDate(endMs);
+    if (a.getUTCMonth() !== b.getUTCMonth()) return a.getUTCDate() + " " + MONTHS[a.getUTCMonth()] + " – " + formatDate(endMs);
+    return a.getUTCDate() + "–" + formatDate(endMs);
+  }
+
+  function paceNote(items) {
+    const notes = [];
+    const counts = {}; // weighted by position, so ties are rare and the Future/Outcome decides
+    items.forEach((it) => { if (it.card.suit) counts[it.card.suit] = (counts[it.card.suit] || 0) + it.position.weight; });
+    const top = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+    if (top) notes.push("Pace: " + PACE[top] + " (" + SUITS[top].name + ").");
+    const majors = items.filter((it) => it.card.arcana === "major").length;
+    if (items.length > 1 && majors / items.length > 0.5) notes.push("Many Major Arcana: this is a big development and may take longer to unfold.");
+    if (items.length > 1 && items.filter((it) => it.reversed).length / items.length > 0.5) notes.push("Most cards are reversed, which suggests delays.");
+    return notes;
+  }
+
+  /** Explain an advice card: "Focus on" what helps, "Avoid" what hurts. */
+  function adviceLine(it) {
+    const verb = it.value > 0 ? "Focus on" : it.value < 0 ? "Avoid" : it.reversed ? "Be careful with" : "Make room for";
+    return verb + " " + pair(it) + " (" + ref(it) + ").";
+  }
+
+  const ANSWERS = {
+    outlook(items, ctx) {
+      const v = ctx.reading.verdict;
+      const main = mainItem(items);
+      return {
+        tone: v.key,
+        score: ctx.reading.score,
+        headline: "The outlook is " + OUTLOOKS[v.key][0] + ", pointing toward " + pair(main) + " (" + ref(main) + ").",
+        details: [OUTLOOKS[v.key][1], main.position.name + ": " + meaningOf(main)],
+      };
+    },
+
+    advice(items) {
+      const byHelp = items.slice().sort((a, b) => b.value * b.position.weight - a.value * a.position.weight);
+      const adviceCard = items.find((it) => it.position.name === "Advice");
+      const best = adviceCard || (byHelp[0].value > 0 ? byHelp[0] : mainItem(items));
+      const worst = byHelp[byHelp.length - 1];
+      const details = [meaningOf(best)];
+      if (worst !== best && worst.value < 0) {
+        details.push("Watch out for " + pair(worst) + " (" + ref(worst) + ", " + worst.position.name + "). " + meaningOf(worst));
+      }
+      return { headline: adviceLine(best), details };
+    },
+
+    why(items) {
+      const order = ["Foundation", "Past", "Recent Past", "Where you stand", "Guidance"];
+      const causes = order.map((n) => items.find((it) => it.position.name === n)).filter(Boolean);
+      const root = causes[0] || items[0];
+      const details = [meaningOf(root)];
+      if (causes[1]) details.push("It was fed by " + pair(causes[1]) + " (" + ref(causes[1]) + ", " + causes[1].position.name + ").");
+      const challenge = items.find((it) => it.position.name === "Challenge");
+      if (challenge) details.push("What keeps it going: " + pair(challenge) + " (" + ref(challenge) + ", Challenge).");
+      return { headline: "The root of it is " + pair(root) + " (" + ref(root) + ").", details };
+    },
+
+    who(items) {
+      const courts = items.filter((it) => it.card.court).sort((a, b) => b.position.weight - a.position.weight);
+      if (!courts.length) {
+        const env = items.find((it) => it.position.name === "Environment") || mainItem(items);
+        return {
+          headline: "No court cards came up, so the cards describe the situation more than a specific person.",
+          details: ["Watch for someone who brings " + pair(env) + " (" + ref(env) + ")."],
+        };
+      }
+      const c = courts[0];
+      const a = c.card.astrology;
+      const element = a.sign.element;
+      const others = Astro.SIGNS.filter((s) => s.element === element && s !== a.sign).map((s) => s.name);
+      const signLine = a.kind === "court"
+        ? "The " + c.card.name + " rules " + a.sign.name + ", so they may be a " + a.sign.name + " or another " +
+          element.toLowerCase() + " sign (" + others.join(" or ") + ")."
+        : "As a " + element.toLowerCase() + " card, they may be a " +
+          Astro.SIGNS.filter((s) => s.element === element).map((s) => s.name).join(", ").replace(/, ([^,]*)$/, " or $1") + ".";
+      const details = [meaningOf(c), signLine];
+      if (courts.length > 1) {
+        details.push("Also involved: " + courts.slice(1).map((o) => PERSONA[o.card.rank] + " (" + ref(o) + ")").join("; ") + ".");
+      }
+      return { headline: "Look for " + PERSONA[c.card.rank] + ", with " + pair(c) + " (" + ref(c) + ").", details };
+    },
+
+    where(items) {
+      const tally = {};
+      items.forEach((it) => {
+        const e = elementOf(it.card);
+        if (e) tally[e] = (tally[e] || 0) + it.position.weight;
+      });
+      const els = Object.keys(tally).sort((a, b) => tally[b] - tally[a]);
+      if (!els.length) {
+        return { headline: "The cards don't point to a particular place: the answer is more about timing and attitude than location.", details: [] };
+      }
+      const e = els[0];
+      const cards = items.filter((it) => elementOf(it.card) === e).map((it) => it.card.name);
+      const details = [e + " is the strongest element here (" + cards.join(", ") + "), and it is traditionally linked with the " + PLACES[e].direction + "."];
+      if (els[1] && tally[els[1]] === tally[e]) details.push("Also consider " + PLACES[els[1]].places + " (" + els[1] + ").");
+      return { headline: capitalize(PLACES[e].places) + ".", details };
+    },
+
+    when(items, ctx) {
+      const now = ctx.now != null ? new Date(ctx.now).getTime() : Date.now();
+      const ranked = items.slice().sort((a, b) => b.position.weight - a.position.weight || b.index - a.index);
+      const timed = ranked.find((it) => it.card.astrology && it.card.astrology.start != null);
+      const pace = paceNote(items);
+      if (!timed) {
+        return {
+          headline: "The cards don't give a clear date: they're ruled by planets rather than signs, so the timing is up to you.",
+          details: pace,
+        };
+      }
+      const a = timed.card.astrology;
+      const p = Astro.sunPeriod(a.start, a.end, now);
+      const when = p.now ? "Soon: from now until " + formatDate(p.end) : "Most likely " + formatRange(p.start, p.end);
+      const name = timed.card.name;
+      const why = {
+        decan: "The " + name + " is " + a.label + ": the ten days when the Sun passes through that part of " + a.sign.name + ".",
+        sign: name + " is the card of " + a.sign.name + ", so its time is the month when the Sun is in " + a.sign.name + ".",
+        court: "The " + name + " rules " + a.sign.name + ", so its time is the month when the Sun is in " + a.sign.name + ".",
+        season: "The " + name + " rules " + a.label + ", the season that begins when the Sun enters " + a.sign.name + ".",
+      }[a.kind];
+      const details = [why + " (" + timed.position.name + " card)"];
+      if (timed.reversed) details.push("It's reversed, which often means a delay: it may happen later than this.");
+      return { headline: when + " (" + ref(timed) + ").", details: details.concat(pace) };
+    },
+
+    choice(items, ctx) {
+      const options = splitOptions(ctx.question);
+      if (ctx.spreadKey !== "choice") {
+        const o = ANSWERS.outlook(items, ctx);
+        return {
+          tone: o.tone, score: o.score,
+          headline: "Tip: choose the Two Paths spread to compare “" + options[0] + "” and “" + options[1] + "” side by side.",
+          details: [o.headline].concat(o.details),
+        };
+      }
+      const [stand, A, B, adv] = items;
+      const lean = (v) => LEANS[v];
+      let headline;
+      if (A.value - B.value >= 1) headline = "The cards favour: " + options[0] + ".";
+      else if (B.value - A.value >= 1) headline = "The cards favour: " + options[1] + ".";
+      else if (A.value > 0) headline = "Both paths look good. Choose the one that feels right; the Advice card shows how.";
+      else if (A.value < 0) headline = "Both paths look hard right now. Consider waiting, or look for a third option.";
+      else headline = "Neither path clearly stands out, so the Advice card is the key.";
+      return {
+        headline,
+        details: [
+          "Path A (" + options[0] + "): " + pair(A) + " (" + ref(A) + "), leans " + lean(A.value) + ".",
+          "Path B (" + options[1] + "): " + pair(B) + " (" + ref(B) + "), leans " + lean(B.value) + ".",
+          "Advice: " + adviceLine(adv) + " " + meaningOf(adv),
+          "Where you stand: " + pair(stand) + " (" + ref(stand) + ").",
+        ],
+      };
+    },
+  };
+
+  /**
+   * Answer an open (not yes/no) question from the drawn cards. Returns
+   * { type, label, tone, headline, details[], score } or null. `options.now`
+   * (Date or ms) sets "today" for timing answers.
+   */
+  function openAnswer(question, drawn, spreadKey, options) {
+    const type = classifyQuestion(question);
+    if (!type || type === "yesno" || !drawn.length) return null;
+    const positions = SPREADS[spreadKey].positions;
+    const reading = yesNoReading(drawn, spreadKey);
+    const items = drawn.map((d, i) => ({
+      card: d.card, reversed: d.reversed, index: i, position: positions[i], value: reading.items[i].value,
+    }));
+    const ctx = { question, spreadKey, reading, now: (options || {}).now };
+    return Object.assign({ type, label: QUESTION_TYPES[type].label, tone: "open", score: null, details: [] },
+      ANSWERS[type](items, ctx));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Personal cards: links between a birth chart and a reading
+  // ---------------------------------------------------------------------------
+  /** Drawn cards that are also personal cards (see Astro.personalCards). */
+  function personalLinks(drawn, links) {
+    const out = [];
+    drawn.forEach((d, i) => {
+      const mine = (links || []).filter((l) => l.card === d.card.name);
+      if (mine.length) out.push({ index: i, card: d.card, reversed: d.reversed, roles: mine.map((l) => l.role), why: mine.map((l) => l.why) });
+    });
+    return out;
+  }
+
+  /** Compare the reading's main element with the chart's strongest element. */
+  function elementHarmony(chartElement, drawn) {
+    if (!chartElement || drawn.length < 3) return null;
+    const tally = {};
+    drawn.forEach((d) => {
+      const e = elementOf(d.card);
+      if (e) tally[e] = (tally[e] || 0) + 1;
+    });
+    const els = Object.keys(tally).sort((a, b) => tally[b] - tally[a]);
+    if (!els.length || (els[1] && tally[els[1]] === tally[els[0]])) return null;
+    const e = els[0];
+    return e === chartElement
+      ? "This reading is mostly " + e + ", your chart's strongest element: the situation plays to your natural strengths."
+      : "This reading is mostly " + e + " (" + Astro.ELEMENTS[e].traits + "), while your chart is mostly " + chartElement +
+        ": it asks you to work in a way that may not come naturally.";
+  }
+
   const api = {
     MAJOR_ARCANA, MINOR_ARCANA, SUITS, RANKS, ROMAN, SPREADS, DECK,
-    VERDICTS, buildDeck, shuffle, cut, take, summarize, secureRandomInt,
+    VERDICTS, QUESTION_TYPES, buildDeck, shuffle, cut, take, summarize, secureRandomInt,
     isYesNoQuestion, answerSentence, yesNoReading, narrate,
+    classifyQuestion, splitOptions, openAnswer, elementOf, personalLinks, elementHarmony,
   };
 
   if (typeof module !== "undefined" && module.exports) {

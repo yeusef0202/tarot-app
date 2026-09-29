@@ -54,7 +54,7 @@ button, input { font: inherit; color: inherit; }
 }
 .brand { font-size: 1.5rem; letter-spacing: 0.08em; color: var(--gold-2); }
 .brand-star { color: var(--gold); }
-.menu { display: flex; gap: 4px; }
+.menu { display: flex; flex-wrap: wrap; gap: 4px; }
 .menu-item {
   background: none; border: 1px solid transparent; border-radius: 999px;
   padding: 6px 16px; cursor: pointer; color: var(--muted);
@@ -351,6 +351,85 @@ details p { margin: 6px 0 0; }
 .lean-maybe { background: rgba(217,180,90,.18); color: var(--gold-2); }
 .answer-note { margin: 12px 0 0; font-size: .8rem; color: var(--muted); font-style: italic; }
 .question .hint { display: block; margin-top: 6px; font-size: .85rem; }
+.answer-open { --tone: var(--gold); }
+.answer-open .answer-label { font-size: 1.5rem; text-transform: uppercase; letter-spacing: .08em; }
+.answer-details { margin: 10px 0 0; padding-left: 20px; color: var(--text); }
+.answer-details li { margin-bottom: 6px; }
+.chart-status { margin: 8px 0 0; font-size: .88rem; }
+.personal-note { margin: 0 0 10px; padding: 6px 10px; border-radius: 8px; background: rgba(217,180,90,.1); color: var(--gold-2); font-size: .9rem; }
+.chart-links li { margin-bottom: 6px; }
+
+/* ---------------------------------------------------------------- birth chart */
+.card-link { background: none; border: none; padding: 0; color: var(--gold-2); cursor: pointer; font: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+.card-link:hover, .card-link:focus-visible { color: #fff; }
+.birth-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 20px; margin-top: 16px; align-items: end; }
+.birth-form label { display: grid; gap: 6px; font-size: .9rem; color: var(--muted); }
+.birth-form label em { font-size: .8rem; }
+.birth-form input, .birth-form select {
+  width: 100%; padding: 9px 12px; border-radius: 10px; color: var(--text); font: inherit;
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--border); color-scheme: dark;
+}
+.birth-form input:focus, .birth-form select:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+.birth-form input:disabled { opacity: .4; }
+.birth-form label.check { display: flex; align-items: center; gap: 8px; padding-bottom: 10px; }
+.birth-form label.check input { width: auto; }
+.place-field, .birth-form .actions, .birth-form .error { grid-column: 1 / -1; }
+.place-field > label { margin-bottom: 6px; }
+.place-row { display: flex; gap: 8px; }
+.place-row input { flex: 1; }
+.place-results { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; }
+.place-results button { width: 100%; text-align: left; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: rgba(255,255,255,.04); cursor: pointer; }
+.place-results button:hover, .place-results button:focus-visible { background: rgba(217,180,90,.15); }
+.place-results small { color: var(--muted); margin-left: 6px; }
+#manual-place { margin-top: 8px; color: var(--muted); font-size: .9rem; }
+#manual-place summary { cursor: pointer; }
+.manual-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 10px; }
+.error { color: #f4a9b8; margin: 0; min-height: 1.2em; }
+.error:empty { display: none; }
+.hint.small { font-size: .8rem; margin-top: 14px; }
+.note { color: var(--gold-2); font-size: .9rem; font-style: italic; }
+
+.chart-head h2 { margin: 0 0 4px; }
+.big-three { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 20px; }
+.big-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; border-top: 4px solid var(--el, var(--gold)); }
+.big-card.el-fire { --el: var(--wands); }
+.big-card.el-water { --el: var(--cups); }
+.big-card.el-air { --el: var(--swords); }
+.big-card.el-earth { --el: var(--pentacles); }
+.big-card.missing { opacity: .75; }
+.big-head { display: flex; align-items: center; gap: 14px; }
+.big-glyph { font-size: 2.4rem; color: var(--gold-2); line-height: 1; }
+.big-role { margin: 0; font-size: .75rem; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+.big-card h3 { margin: 2px 0 0; font-size: 1.5rem; }
+.big-card h3 small { font-size: .9rem; color: var(--muted); }
+.big-about { margin: 12px 0 4px; }
+.big-card .meta { margin: 0 0 12px; color: var(--muted); font-size: .88rem; }
+.linked-cards { display: flex; gap: 14px; flex-wrap: wrap; }
+.mini-card { background: none; border: none; padding: 0; cursor: pointer; display: grid; justify-items: center; gap: 6px; color: var(--muted); font-size: .78rem; max-width: 110px; text-align: center; }
+.mini-card .card { --w: 72px; transition: transform .2s; }
+.mini-card:hover .card, .mini-card:focus-visible .card { transform: translateY(-4px); }
+.mini-card:focus-visible { outline: none; }
+.mini-card:focus-visible .card-front { box-shadow: 0 0 0 3px var(--gold); }
+.personal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.personal-item { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; }
+.personal-item figcaption { font-size: .88rem; color: var(--muted); }
+.personal-item figcaption b { display: block; color: var(--gold-2); font-weight: normal; text-transform: uppercase; letter-spacing: .1em; font-size: .75rem; margin-bottom: 2px; }
+.table-wrap { overflow-x: auto; }
+.planet-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.planet-table th { text-align: left; font-weight: normal; color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.planet-table td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: top; }
+.planet-table td small { display: block; color: var(--muted); font-size: .78rem; }
+.planet-table .glyph { color: var(--gold-2); display: inline-block; width: 1.4em; }
+.retro { color: var(--reversed); }
+.el-bars { display: grid; gap: 8px; max-width: 520px; }
+.el-bar { display: grid; grid-template-columns: 150px 1fr 24px; gap: 10px; align-items: center; font-size: .9rem; }
+.el-track { height: 10px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden; }
+.el-track div { height: 100%; border-radius: 999px; background: var(--el); }
+.el-bar.el-fire { --el: var(--wands); }
+.el-bar.el-water { --el: var(--cups); }
+.el-bar.el-air { --el: var(--swords); }
+.el-bar.el-earth { --el: var(--pentacles); }
+.element-summary { margin: 14px 0 4px; }
 .summary .cards-line { color: var(--muted); margin-top: 12px; font-size: .92rem; }
 
 /* ------------------------------------------------------------ card guide */
@@ -406,6 +485,8 @@ details p { margin: 6px 0 0; }
   .explain { grid-template-columns: 1fr; }
   .explain .card { --w: 90px; }
   .dialog-card { grid-template-columns: 1fr; justify-items: center; }
+  .el-bar { grid-template-columns: 110px 1fr 24px; }
+  .personal-grid { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

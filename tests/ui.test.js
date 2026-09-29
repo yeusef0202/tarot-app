@@ -11,14 +11,19 @@ const { JSDOM } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8").replace(/<script[^>]*><\/script>/g, "");
+const astroSrc = fs.readFileSync(path.join(ROOT, "astro.js"), "utf8");
 const deckSrc = fs.readFileSync(path.join(ROOT, "deck.js"), "utf8");
 const appSrc = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
 
 const flush = () => new Promise((r) => setImmediate(r));
 
-function load() {
+function load(options) {
+  const opts = options || {};
   const dom = new JSDOM(html, { runScripts: "outside-only", pretendToBeVisual: true, url: "http://localhost/" });
   const w = dom.window;
+  if (opts.storage) Object.entries(opts.storage).forEach(([k, v]) => w.localStorage.setItem(k, v));
+  // Place search: canned Open-Meteo responses, no network.
+  w.fetch = opts.fetch || (async () => { throw new Error("offline"); });
   if (!w.crypto || !w.crypto.getRandomValues) {
     Object.defineProperty(w, "crypto", { value: globalThis.crypto });
   }
@@ -29,6 +34,7 @@ function load() {
   w.HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   w.HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   w.confirm = () => true;
+  w.eval(astroSrc);
   w.eval(deckSrc);
   w.eval(appSrc);
   const $ = (s) => w.document.querySelector(s);
@@ -85,7 +91,7 @@ function checkExplanations(app, spreadKey) {
 
 test("initial screen: menu, disabled deck, only Shuffle available", () => {
   const app = load();
-  assert.deepEqual(app.$$(".menu-item").map((b) => b.textContent), ["Reading", "Card Guide", "How it works"]);
+  assert.deepEqual(app.$$(".menu-item").map((b) => b.textContent), ["Reading", "Card Guide", "Birth Chart", "How it works"]);
   assert.ok(app.$("#view-reading").classList.contains("active"));
   assert.equal(app.$$("#deck-fan .fan-card").length, 78);
   assert.equal(enabledFan(app).length, 0, "cannot take cards before shuffling");
@@ -97,7 +103,7 @@ test("initial screen: menu, disabled deck, only Shuffle available", () => {
 
 test("menu switches between Reading, Card Guide and How it works", () => {
   const app = load();
-  for (const view of ["guide", "about", "reading"]) {
+  for (const view of ["guide", "chart", "about", "reading"]) {
     app.$(`.menu-item[data-view="${view}"]`).click();
     assert.deepEqual(app.$$(".view.active").map((v) => v.id), ["view-" + view]);
     assert.equal(app.$(".menu-item.active").dataset.view, view);
@@ -310,21 +316,213 @@ test("a yes/no question gets an answer that combines all the cards", async () =>
   }
 });
 
-test("an open question gets the combined interpretation but no yes/no answer", async () => {
+test("an open question gets its own kind of answer, not a yes/no", async () => {
   const app = load();
   const q = app.$("#question");
   q.value = "What should I focus on this month?";
   q.dispatchEvent(new app.w.Event("input"));
-  assert.match(app.$("#question-hint").textContent, /Open question/);
+  assert.match(app.$("#question-hint").textContent, /Advice question/);
   await shuffle(app);
   for (let k = 0; k < 3; k++) enabledFan(app)[0].click();
-  assert.equal(app.$("#summary .answer"), null);
+  const box = app.$("#summary .answer");
+  assert.equal(box.dataset.type, "advice");
+  assert.equal(box.dataset.verdict, undefined, "no yes/no verdict");
+  assert.equal(app.$("#summary .answer-label").textContent, "Advice");
+  assert.equal(app.$$("#summary .lean-list li").length, 0);
   assert.ok(app.$("#summary .story").textContent.length > 50);
   assert.equal(app.$("#summary .question-echo").textContent, "“What should I focus on this month?”");
+  assert.match(app.$("#status").textContent, /advice answer/);
 
   // Rewording it as a yes/no question after the reading updates the summary.
   q.value = "Should I focus on my studies?";
   q.dispatchEvent(new app.w.Event("input"));
   assert.ok(app.$("#summary .answer"));
   assert.match(app.$("#summary .answer-sentence").textContent, /focus on your studies\.$/);
+});
+
+// ---------------------------------------------------------------------------
+// Open questions
+// ---------------------------------------------------------------------------
+test("every kind of open question shows the answer deck.js computes, for every spread", async () => {
+  const app = load();
+  const questions = {
+    when: "When will I find a job?", why: "Why am I so tired?", who: "Who will I meet?",
+    where: "Where should I travel?", advice: "How can I be happier?", outlook: "What about my love life?",
+    choice: "Should I study law or medicine?",
+  };
+  for (const [type, text] of Object.entries(questions)) {
+    const q = app.$("#question");
+    q.value = text;
+    q.dispatchEvent(new app.w.Event("input"));
+    assert.equal(app.$("#question-hint").textContent.startsWith(app.T.QUESTION_TYPES[type].hint), true, type + " hint");
+    for (const spread of ["single", "three", "celtic", "choice"]) {
+      if (!app.$("#btn-reset").disabled) app.$("#btn-reset").click();
+      pickSpread(app, spread);
+      await shuffle(app);
+      const n = app.T.SPREADS[spread].positions.length;
+      for (let k = 0; k < n; k++) enabledFan(app)[Math.floor(Math.random() * (78 - k))].click();
+      const drawn = checkExplanations(app, spread).map((x) => ({ card: x.card, reversed: x.rev }));
+      const expected = app.T.openAnswer(text, drawn, spread);
+      const box = app.$("#summary .answer");
+      assert.equal(box.dataset.type, type, `${type} in ${spread}`);
+      assert.equal(app.$("#summary .answer-sentence").textContent, expected.headline);
+      assert.deepEqual(app.$$("#summary .answer-details li").map((li) => li.textContent), [...expected.details]);
+      assert.equal(!!app.$("#summary .meter"), expected.score != null, "meter only for outlooks");
+    }
+  }
+});
+
+test("Two Paths: an either/or question gets one card per option and a recommendation", async () => {
+  const app = load();
+  const q = app.$("#question");
+  q.value = "Should I take the job in Lisbon or stay in Porto?";
+  q.dispatchEvent(new app.w.Event("input"));
+  assert.match(app.$("#question-hint").textContent, /Choose the Two Paths spread/);
+  pickSpread(app, "choice");
+  assert.doesNotMatch(app.$("#question-hint").textContent, /Choose the Two Paths spread/);
+  await shuffle(app);
+  for (let k = 0; k < 4; k++) enabledFan(app)[0].click();
+  assert.deepEqual(app.$$(".slot-label b").map((b) => b.textContent), ["1. Where you stand", "2. Path A", "3. Path B", "4. Advice"]);
+  const details = app.$$("#summary .answer-details li").map((li) => li.textContent);
+  assert.match(details[0], /^Path A \(take the job in Lisbon\): /);
+  assert.match(details[1], /^Path B \(stay in Porto\): /);
+  assert.match(app.$("#summary .answer-sentence").textContent, /take the job in Lisbon|stay in Porto|Both paths|Neither path/);
+});
+
+// ---------------------------------------------------------------------------
+// Birth chart
+// ---------------------------------------------------------------------------
+function fillBirth(app, b) {
+  app.$("#birth-name").value = b.name || "";
+  app.$("#birth-date").value = b.date || "";
+  app.$("#birth-time-unknown").checked = !!b.unknown;
+  app.$("#birth-time").value = b.time || "";
+  app.$("#birth-place").value = b.place || "";
+  app.$("#birth-lat").value = b.lat != null ? b.lat : "";
+  app.$("#birth-lon").value = b.lon != null ? b.lon : "";
+  if (b.tz) app.$("#birth-tz").value = b.tz;
+}
+const submitBirth = (app) => app.$("#birth-form").dispatchEvent(new app.w.Event("submit", { cancelable: true }));
+const LISBON = { name: "Ana", date: "1990-07-15", time: "14:30", place: "Lisbon, Portugal", lat: 38.7167, lon: -9.1333, tz: "Europe/Lisbon" };
+
+test("birth chart: entering details shows the chart and the linked tarot cards", () => {
+  const app = load();
+  assert.equal(app.$("#chart-result").hidden, true);
+  assert.match(app.$("#chart-status").textContent, /add your birth details/);
+  app.$('.menu-item[data-view="chart"]').click();
+  fillBirth(app, LISBON);
+  submitBirth(app);
+  assert.equal(app.$("#birth-error").textContent, "");
+  assert.equal(app.$("#chart-result").hidden, false);
+
+  const expected = app.w.Astro.chart({ year: 1990, month: 7, day: 15, hour: 14, minute: 30, timeZone: "Europe/Lisbon", lat: 38.7167, lon: -9.1333 });
+  assert.match(app.$(".chart-head h2").textContent, /Ana's chart/);
+  assert.match(app.$(".chart-head .hint").textContent, /Born 15 July 1990 at 14:30 in Lisbon, Portugal · Europe\/Lisbon \(UTC\+1\)/);
+  for (const key of ["sun", "moon", "ascendant"]) {
+    const el = app.$(`.big-card[data-body="${key}"]`);
+    assert.match(el.querySelector("h3").textContent, new RegExp("^" + expected.byKey[key].sign.name));
+    const cards = [...el.querySelectorAll(".mini-card")].map((b) => b.dataset.cardId);
+    const ids = [expected.byKey[key].sign.card, expected.byKey[key].decan.card].map((n) => app.T.DECK.find((c) => c.name === n).id);
+    assert.deepEqual(cards, ids, key + " cards");
+  }
+  assert.match(app.$('.big-card[data-body="sun"] h3').textContent, /^Cancer/);
+  assert.equal(app.$$(".planet-table tbody tr").length, 12); // 10 bodies + Rising + Midheaven
+  assert.match(app.$(".element-summary").textContent, /balanced between Fire, Air and Water, so your suits are Wands, Swords and Cups/);
+  assert.equal(app.$$(".personal-item").length, app.w.Astro.personalCards(expected).length);
+  assert.match(app.$("#chart-status").textContent, /☉ Cancer · ☽ Aries · Rising Libra/);
+
+  // Clicking a card opens its description.
+  app.$('.big-card[data-body="sun"] .mini-card').click();
+  assert.equal(app.$("#card-dialog").hasAttribute("open"), true);
+  assert.match(app.$("#card-dialog-body h2").textContent, /The Chariot/);
+
+  // Saved in this browser only, and restored on the next visit.
+  const saved = JSON.parse(app.w.localStorage.getItem("arcana.birth"));
+  assert.equal(saved.date, "1990-07-15");
+  const again = load({ storage: { "arcana.birth": JSON.stringify(saved) } });
+  assert.equal(again.$("#chart-result").hidden, false);
+  assert.equal(again.$("#birth-date").value, "1990-07-15");
+  assert.match(again.$('.big-card[data-body="moon"] h3').textContent, /^Aries/);
+
+  // Forget removes everything.
+  again.$("#btn-forget").click();
+  assert.equal(again.w.localStorage.getItem("arcana.birth"), null);
+  assert.equal(again.$("#chart-result").hidden, true);
+  assert.equal(again.$("#birth-date").value, "");
+});
+
+test("birth chart: without a birth time there is no rising sign; bad input shows errors", () => {
+  const app = load();
+  submitBirth(app);
+  assert.match(app.$("#birth-error").textContent, /date of birth/);
+  fillBirth(app, { date: "1990-07-15", time: "14:30" });
+  submitBirth(app);
+  assert.match(app.$("#birth-error").textContent, /place of birth/, "a birth time needs a place");
+  fillBirth(app, { date: "1990-07-15", time: "14:30", lat: 95, lon: 0 });
+  submitBirth(app);
+  assert.match(app.$("#birth-error").textContent, /coordinates/);
+  fillBirth(app, { date: "1990-07-15", unknown: true, tz: "Europe/Lisbon" });
+  submitBirth(app);
+  assert.equal(app.$("#birth-error").textContent, "");
+  assert.match(app.$('.big-card.missing h3').textContent, /Unknown/);
+  assert.match(app.$(".chart-head .note").textContent, /rising sign can't be worked out/);
+  assert.equal(app.$$(".planet-table tbody tr").length, 10);
+  assert.equal(app.$$('.personal-item[data-role="Rising sign"]').length, 0);
+  // Corrupt saved data is ignored instead of breaking the app.
+  const broken = load({ storage: { "arcana.birth": "{not json" } });
+  assert.equal(broken.$("#chart-result").hidden, true);
+});
+
+test("place search fills in the coordinates and time zone", async () => {
+  const calls = [];
+  const fetch = async (url) => {
+    calls.push(url);
+    return { ok: true, json: async () => ({ results: [
+      { name: "Aveiro", latitude: -3.6, longitude: -55.3, country: "Brazil", admin1: "Pará", timezone: "America/Santarem" },
+      { name: "Aveiro", latitude: 40.64575, longitude: -8.64643, country: "Portugal", admin1: "Aveiro District", timezone: "Europe/Lisbon" },
+    ] }) };
+  };
+  const app = load({ fetch });
+  app.$("#birth-place").value = "Aveiro, Portugal";
+  app.$("#btn-place").click();
+  await flush();
+  await flush();
+  assert.match(calls[0], /geocoding-api\.open-meteo\.com\/v1\/search\?.*name=Aveiro$/);
+  const options = app.$$("#place-results button");
+  assert.equal(options.length, 1, "“, Portugal” narrows the results");
+  options[0].click();
+  assert.equal(app.$("#birth-lat").value, "40.64575");
+  assert.equal(app.$("#birth-lon").value, "-8.64643");
+  assert.equal(app.$("#birth-tz").value, "Europe/Lisbon");
+  assert.match(app.$("#place-chosen").textContent, /Aveiro, Aveiro District, Portugal/);
+
+  // Offline: a helpful message instead of an error.
+  const offline = load();
+  offline.$("#birth-place").value = "Porto";
+  offline.$("#btn-place").click();
+  await flush();
+  assert.match(offline.$("#place-chosen").textContent, /Couldn't reach the place search/);
+});
+
+test("readings mark personal cards and compare the elements with the chart", async () => {
+  const app = load();
+  fillBirth(app, LISBON);
+  submitBirth(app);
+  const sunCard = "The Chariot"; // Cancer Sun
+  await shuffle(app);
+  const idx = app.w.TarotApp.state.pile.findIndex((d) => d.card.name === sunCard);
+  enabledFan(app)[idx].click();
+  const note = app.$("#explain-0 .personal-note");
+  assert.ok(note, "personal card is marked");
+  assert.match(note.textContent, /Sun in Cancer: The Chariot is the card of Cancer/);
+  enabledFan(app)[0].click();
+  enabledFan(app)[0].click();
+  const links = app.$$("#summary .chart-links li").map((li) => li.textContent);
+  assert.ok(links.some((t) => /^The Chariot \(Past\) is your sun sign card/.test(t)), links.join(" | "));
+  // Without a chart there is no personal section.
+  const plain = load();
+  await shuffle(plain);
+  for (let k = 0; k < 3; k++) enabledFan(plain)[0].click();
+  assert.equal(plain.$("#summary .chart-links"), null);
+  assert.equal(plain.$(".personal-note"), null);
 });

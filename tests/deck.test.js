@@ -383,6 +383,7 @@ test("spreads have the right positions (Celtic Cross in Waite's order)", () => {
     "Present", "Challenge", "Crown", "Foundation", "Recent Past",
     "Near Future", "Self", "Environment", "Hopes & Fears", "Outcome",
   ]);
+  assert.deepEqual(T.SPREADS.choice.positions.map((p) => p.name), ["Where you stand", "Path A", "Path B", "Advice"]);
 });
 
 test("summary detects Major Arcana weight, dominant suit, reversals, courts and aces", () => {
@@ -434,7 +435,8 @@ test("yes/no leans follow standard tarot readings", () => {
 
 test("recognizes yes/no questions", () => {
   const yes = ["Will I pass my test tomorrow?", "will i get the job", "Should I move?", "Am I ready?",
-    "Is it a good time to invest?", "Does he love me?", "Can we fix this?", "Do I need to study more?"];
+    "Is it a good time to invest?", "Does he love me?", "Can we fix this?", "Do I need to study more?",
+    "Should I go or not?"];
   const notYes = ["What should I focus on?", "How will my exam go?", "Should I take job A or job B?", "", "Will", "Tell me about love"];
   yes.forEach((q) => assert.ok(T.isYesNoQuestion(q), q));
   notYes.forEach((q) => assert.ok(!T.isYesNoQuestion(q), q));
@@ -524,4 +526,162 @@ test("the combined interpretation mentions every card in its position", () => {
     assert.match(story, /Overall, /);
   }
   assert.equal(T.narrate([], "three"), "");
+});
+
+// ---------------------------------------------------------------------------
+// 6. Open questions (not yes/no)
+// ---------------------------------------------------------------------------
+const up = (n) => ({ card: byName[n], reversed: false });
+const rev = (n) => ({ card: byName[n], reversed: true });
+const NOW = Date.UTC(2026, 8, 29); // 29 Sep 2026: the Sun is at ~6° Libra
+
+test("questions are sorted into types", () => {
+  const cases = {
+    yesno: ["Will I pass my test?", "Should I go or not?", "Does she like me?"],
+    choice: ["Should I take the job in Lisbon or stay in Porto?", "Which is better for me, coffee or tea?",
+      "Is it better to rent or buy?", "Will he call or text?"],
+    when: ["When will I find love?", "How long until I get a job?", "How soon will things improve?", "What month will I move?"],
+    why: ["Why do I feel stuck?", "What is causing my stress?", "Why did she leave?"],
+    who: ["Who is my soulmate?", "Which person can I trust?"],
+    where: ["Where will I meet them?", "Where should I live?"],
+    advice: ["What should I focus on?", "How can I improve my grades?", "What do I need to do?", "How do I get over him?", "Any advice for my exam?"],
+    outlook: ["What will happen with my relationship?", "Tell me about love", "How will my exam go?", "My career"],
+  };
+  for (const [type, qs] of Object.entries(cases)) {
+    for (const q of qs) assert.equal(T.classifyQuestion(q), type, q);
+  }
+  assert.equal(T.classifyQuestion(""), null);
+  assert.equal(T.classifyQuestion("   "), null);
+});
+
+test("either/or questions are split into two options", () => {
+  assert.deepEqual(T.splitOptions("Should I take the job in Lisbon or stay in Porto?"), ["take the job in Lisbon", "stay in Porto"]);
+  assert.deepEqual(T.splitOptions("Which is better for me, coffee or tea?"), ["coffee", "tea"]);
+  assert.deepEqual(T.splitOptions("Is it better to rent or buy?"), ["rent", "buy"]);
+  assert.deepEqual(T.splitOptions("Should I stay with my partner or move on?"), ["stay with your partner", "move on"]);
+  assert.deepEqual(T.splitOptions("Should I stay, or go?"), ["stay", "go"]);
+  assert.equal(T.splitOptions("Should I go or not?"), null);
+  assert.equal(T.splitOptions("A or B or C?"), null);
+  assert.equal(T.splitOptions("When will I move?"), null);
+});
+
+test("timing: the most important card with a date gives the range", () => {
+  // Two of Wands (Mars in Aries) in the Future position → the Sun's 0–10° Aries.
+  const a = T.openAnswer("When will I find love?", [up("Four of Swords"), up("The Magician"), up("Two of Wands")], "three", { now: NOW });
+  assert.equal(a.type, "when");
+  assert.equal(a.label, "Timing");
+  assert.equal(a.headline, "Most likely 20–30 March 2027 (Two of Wands).");
+  assert.match(a.details[0], /Mars in Aries/);
+  assert.ok(a.details.includes("Pace: fast, within days (Wands)."));
+
+  // A card whose period is happening now.
+  const now = T.openAnswer("When?", [up("Two of Swords")], "single", { now: NOW });
+  assert.equal(now.headline, "Soon: from now until 3 October 2026 (Two of Swords).");
+
+  // Season (Ace), month (court card, zodiac Major) and a reversed card (delay).
+  assert.equal(T.openAnswer("When?", [up("Ace of Pentacles")], "single", { now: NOW }).headline,
+    "Most likely 21 December 2026 – 20 March 2027 (Ace of Pentacles).");
+  assert.equal(T.openAnswer("When?", [up("Knight of Wands")], "single", { now: NOW }).headline,
+    "Most likely 22 November – 21 December 2026 (Knight of Wands)."); // Sagittarius
+  const late = T.openAnswer("When?", [rev("The Emperor")], "single", { now: NOW }); // Aries
+  assert.equal(late.headline, "Most likely 20 March – 20 April 2027 (The Emperor, reversed).");
+  assert.ok(late.details.some((d) => /delay/.test(d)));
+
+  // The Future card outranks the Past card, even when the Past card has a date.
+  const ranked = T.openAnswer("When?", [up("Two of Wands"), up("The Sun"), up("Knight of Wands")], "three", { now: NOW });
+  assert.match(ranked.headline, /Knight of Wands/);
+
+  // Only planet cards: no date.
+  const none = T.openAnswer("When?", [up("The Magician"), up("The Sun"), up("The Tower")], "three", { now: NOW });
+  assert.match(none.headline, /don't give a clear date/);
+});
+
+test("cause, person, place, advice and outlook answers use the right cards", () => {
+  const three = [rev("Four of Swords"), up("Eight of Pentacles"), up("The Star")];
+
+  const why = T.openAnswer("Why do I feel stuck?", three, "three");
+  assert.equal(why.headline, "The root of it is restlessness and burnout (Four of Swords, reversed).");
+  assert.equal(why.details[0], byName["Four of Swords"].meaning.reversed);
+  // In a Celtic Cross the root is the Foundation card (position 4).
+  const celtic = ["Ace of Cups", "Five of Wands", "The Star", "The Moon", "Three of Cups", "Six of Wands",
+    "Strength", "Queen of Cups", "Nine of Cups", "The World"].map(up);
+  const whyC = T.openAnswer("Why?", celtic, "celtic");
+  assert.match(whyC.headline, /\(The Moon\)\.$/);
+  assert.ok(whyC.details.some((d) => /Three of Cups, Recent Past/.test(d)));
+  assert.ok(whyC.details.some((d) => /Five of Wands, Challenge/.test(d)));
+
+  const who = T.openAnswer("Who will help me?", [up("Queen of Cups"), up("The Star"), rev("Knight of Swords")], "three");
+  assert.match(who.headline, /^Look for an energetic person on the move/); // the Future card's court
+  assert.ok(who.details.some((d) => /Gemini or another air sign \(Libra or Aquarius\)/.test(d)));
+  assert.ok(who.details.some((d) => /Also involved: a mature, caring person/.test(d)));
+  const nobody = T.openAnswer("Who?", three, "three");
+  assert.match(nobody.headline, /No court cards/);
+
+  const where = T.openAnswer("Where will I meet them?", [up("Two of Cups"), up("The Chariot"), up("Ace of Wands")], "three");
+  assert.match(where.headline, /near water/); // Cups + The Chariot (Cancer, water) outweigh one Wands card
+  assert.ok(where.details[0].includes("west"));
+
+  const advice = T.openAnswer("What should I focus on?", [up("Five of Cups"), up("Eight of Pentacles"), up("The Star")], "three");
+  assert.equal(advice.headline, "Focus on hope and faith (The Star).");
+  assert.equal(advice.details[0], byName["The Star"].meaning.upright);
+  assert.ok(advice.details.some((d) => /^Watch out for .* \(Five of Cups, Past\)/.test(d)), advice.details.join(" | "));
+  // Neutral cards only: no "watch out", and the advice comes from the main card.
+  const calm = T.openAnswer("What should I do?", [up("The Hermit")], "single");
+  assert.equal(calm.headline, "Make room for introspection and soul-searching (The Hermit).");
+  assert.equal(calm.details.length, 1);
+
+  const outlook = T.openAnswer("What will happen with my job?", three, "three");
+  const yn = T.yesNoReading(three, "three");
+  assert.equal(outlook.tone, yn.verdict.key);
+  assert.equal(outlook.score, yn.score);
+  assert.match(outlook.headline, /^The outlook is favourable, pointing toward hope and faith \(The Star\)\.$/);
+
+  // Yes/no questions and empty questions are not open questions.
+  assert.equal(T.openAnswer("Will I pass?", three, "three"), null);
+  assert.equal(T.openAnswer("", three, "three"), null);
+});
+
+test("either/or questions compare the two paths", () => {
+  const q = "Should I take the job in Lisbon or stay in Porto?";
+  const a = T.openAnswer(q, [up("The Hermit"), up("Six of Wands"), up("Five of Pentacles"), up("Temperance")], "choice");
+  assert.equal(a.headline, "The cards favour: take the job in Lisbon.");
+  assert.equal(a.details[0], "Path A (take the job in Lisbon): victory and public recognition (Six of Wands), leans strong yes.");
+  assert.match(a.details[2], /^Advice: Focus on balance and moderation \(Temperance\)\./);
+  const b = T.openAnswer(q, [up("The Hermit"), up("The Tower"), up("The Sun"), up("Temperance")], "choice");
+  assert.equal(b.headline, "The cards favour: stay in Porto.");
+  const both = T.openAnswer(q, [up("The Hermit"), up("The Sun"), up("The Star"), up("Temperance")], "choice");
+  assert.match(both.headline, /^Both paths look good/);
+  // Other spreads can't compare the options, so the answer suggests Two Paths.
+  const tip = T.openAnswer(q, [up("The Hermit"), up("The Sun"), up("The Star")], "three");
+  assert.match(tip.headline, /Two Paths spread/);
+});
+
+test("open answers work for 3000 random readings of every type and spread", () => {
+  const qs = ["When will it happen?", "Why is this happening?", "Who is he?", "Where should I go?",
+    "What should I do?", "What about my career?", "Should I stay or go?"];
+  for (let r = 0; r < 3000; r++) {
+    const spread = ["single", "three", "celtic", "choice"][r % 4];
+    const pile = T.shuffle(T.DECK, { reversals: true });
+    const drawn = pile.slice(0, T.SPREADS[spread].positions.length);
+    const a = T.openAnswer(qs[r % qs.length], drawn, spread, { now: NOW + r * 86400000 });
+    const text = [a.headline].concat(a.details).join(" ");
+    assert.ok(a.headline.length > 20, a.headline);
+    assert.ok(!/undefined|null|NaN|\[object/.test(text), text);
+  }
+});
+
+test("minor cards show their astrology; a reading's element is compared with the chart", () => {
+  assert.equal(byName["Two of Wands"].astro, "Mars in Aries");
+  assert.equal(byName["Ace of Cups"].astro, "Summer");
+  assert.equal(byName["King of Cups"].astro, "Scorpio");
+  assert.equal(byName["Page of Swords"].astro, "Autumn");
+  assert.equal(T.elementOf(byName["The Chariot"]), "Water"); // Cancer
+  assert.equal(T.elementOf(byName["The Fool"]), "Air");
+  assert.equal(T.elementOf(byName["The Sun"]), null); // a planet, no element
+
+  const fiery = [up("Ace of Wands"), up("Strength"), up("Six of Wands")];
+  assert.match(T.elementHarmony("Fire", fiery), /your chart's strongest element/);
+  assert.match(T.elementHarmony("Water", fiery), /mostly Fire .* while your chart is mostly Water/);
+  assert.equal(T.elementHarmony(null, fiery), null);
+  assert.equal(T.elementHarmony("Fire", [up("Ace of Wands")]), null); // too few cards
 });
