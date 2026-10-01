@@ -1,5 +1,7 @@
 # Tarot
 
+**Try it:** https://yeusef0202.github.io/tarot-app/
+
 A simple tarot reading app with the full 78-card Rider–Waite–Smith deck. Shuffle, cut, draw cards into a spread, and read what they mean. A yes/no question gets a combined answer ("Yes, you will pass your test tomorrow.").
 
 - Spreads: Single card, Past · Present · Future, Celtic Cross, Two Paths (for either/or decisions)
@@ -28,3 +30,11 @@ The tests check that shuffles are uniformly random (chi-square), that every card
 Translations live in `i18n.js` (interface and generated sentences) and `cards-pt.js` (card texts).
 
 The place search uses the free [Open-Meteo geocoding API](https://open-meteo.com/en/docs/geocoding-api). Birth details are stored only in the browser's localStorage.
+
+## Disclaimer
+
+For entertainment only. The cards are drawn at random; don't base real decisions on them.
+
+## License
+
+Public domain ([Unlicense](LICENSE)). Do whatever you like with it.

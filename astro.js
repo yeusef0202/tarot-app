@@ -76,10 +76,11 @@
     pluto: { name: "Pluto", glyph: "♇", card: "Judgement", about: "where you transform deeply" },
   };
 
-  const SUIT_NAMES = { Fire: "Wands", Water: "Cups", Air: "Swords", Earth: "Pentacles" };
   const NUMBER_NAMES = ["", "", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
   // Chaldean order of the planets; the decans run through it starting with Mars at 0° Aries.
   const CHALDEAN = ["Mars", "Sun", "Venus", "Mercury", "Moon", "Saturn", "Jupiter"];
+  const FIRST_DECAN_NUMBER = { Cardinal: 2, Fixed: 5, Mutable: 8 };
+  const COURT_RANK = { Cardinal: "Queen", Fixed: "King", Mutable: "Knight" };
 
   /** The sign, degree within the sign and decan (1–3) of an ecliptic longitude. */
   function signOf(lon) {
@@ -95,14 +96,13 @@
   function decanOf(lon) {
     const s = signOf(lon);
     const i = s.index * 3 + s.decan - 1; // 0…35
-    const first = { Cardinal: 2, Fixed: 5, Mutable: 8 }[s.sign.modality];
-    const number = first + s.decan - 1;
+    const number = FIRST_DECAN_NUMBER[s.sign.modality] + s.decan - 1;
     return {
       index: i,
       sign: s.sign,
       decan: s.decan,
       planet: CHALDEAN[i % 7],
-      card: NUMBER_NAMES[number] + " of " + SUIT_NAMES[s.sign.element],
+      card: NUMBER_NAMES[number] + " of " + ELEMENTS[s.sign.element].suitName,
       start: i * 10,
     };
   }
@@ -112,8 +112,7 @@
   /** Court card for a sign (a common modern system): Queens rule the cardinal
    *  signs, Kings the fixed signs and Knights the mutable signs of their element. */
   function courtCardFor(sign) {
-    const rank = { Cardinal: "Queen", Fixed: "King", Mutable: "Knight" }[sign.modality];
-    return rank + " of " + SUIT_NAMES[sign.element];
+    return COURT_RANK[sign.modality] + " of " + ELEMENTS[sign.element].suitName;
   }
 
   /** The astrology behind a card, e.g. { kind: "decan", sign, planet } for the
@@ -126,14 +125,14 @@
           start: d.start, end: d.start + 10 };
       }
     }
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < SIGNS.length; i++) {
       const s = SIGNS[i];
-      if (s.card === cardName) return { kind: "sign", label: s.name, sign: s, start: i * 30, end: i * 30 + 30 };
-      if (courtCardFor(s) === cardName) return { kind: "court", label: s.name, sign: s, start: i * 30, end: i * 30 + 30 };
+      const kind = s.card === cardName ? "sign" : courtCardFor(s) === cardName ? "court" : null;
+      if (kind) return { kind, label: s.name, sign: s, start: i * 30, end: i * 30 + 30 };
     }
     const m = /^(Ace|Page) of (\w+)$/.exec(cardName);
     if (m) {
-      const element = Object.keys(SUIT_NAMES).find((e) => SUIT_NAMES[e] === m[2]);
+      const element = Object.keys(ELEMENTS).find((e) => ELEMENTS[e].suitName === m[2]);
       const i = SIGNS.findIndex((s) => s.element === element && s.modality === "Cardinal");
       const seasons = { Aries: "spring", Cancer: "summer", Libra: "autumn", Capricorn: "winter" };
       return { kind: "season", label: seasons[SIGNS[i].name], sign: SIGNS[i], start: i * 30, end: i * 30 + 90 };
@@ -146,8 +145,11 @@
   // ---------------------------------------------------------------------------
   // Time
   // ---------------------------------------------------------------------------
-  const julianDay = (ms) => ms / 86400000 + 2440587.5;
-  const centuries = (jd) => (jd - 2451545) / 36525;
+  const MS_PER_DAY = 86400000;
+  const JD_UNIX_EPOCH = 2440587.5; // 1970-01-01T00:00Z
+  const J2000 = 2451545; // 2000-01-01T12:00 TT
+  const julianDay = (ms) => ms / MS_PER_DAY + JD_UNIX_EPOCH;
+  const centuries = (jd) => (jd - J2000) / 36525;
 
   /** Offset of a time zone from UTC, in minutes, at a given instant. Uses the
    *  browser's time zone database, which includes historical daylight saving.
@@ -166,16 +168,16 @@
   function localToUtc(year, month, day, hour, minute, timeZone) {
     const guess = Date.UTC(year, month - 1, day, hour, minute);
     const first = tzOffsetMinutes(timeZone, guess);
-    let t = guess - first * 60000;
-    const second = tzOffsetMinutes(timeZone, t);
-    if (second !== first) t = guess - second * 60000;
-    return t;
+    const utc = guess - first * 60000;
+    // Near a DST change the offset at the first estimate can be the wrong one.
+    const second = tzOffsetMinutes(timeZone, utc);
+    return second === first ? utc : guess - second * 60000;
   }
 
   // ---------------------------------------------------------------------------
   // Ephemeris
   // ---------------------------------------------------------------------------
-  /** Nutation in longitude (degrees), low-precision series. */
+  /** Nutation in longitude (degrees), low-precision series (Meeus, ch. 22). */
   function nutation(T) {
     const omega = 125.04452 - 1934.136261 * T;
     const L = 280.4665 + 36000.7698 * T;
@@ -183,6 +185,7 @@
     return (-17.2 * sin(omega) - 1.32 * sin(2 * L) - 0.23 * sin(2 * Lm) + 0.21 * sin(2 * omega)) / 3600;
   }
 
+  /** Mean obliquity of the ecliptic (degrees), linear approximation. */
   function obliquity(T) {
     return 23.439291 - 0.0130042 * T;
   }
@@ -296,9 +299,10 @@
     return planetLongitude(key, jd);
   }
 
+  /** Local mean sidereal time (degrees) from GMST (Meeus, eq. 12.4). */
   function localSiderealTime(jd, lonEast) {
     const T = centuries(jd);
-    const gmst = 280.46061837 + 360.98564736629 * (jd - 2451545) + 0.000387933 * T * T - (T * T * T) / 38710000;
+    const gmst = 280.46061837 + 360.98564736629 * (jd - J2000) + 0.000387933 * T * T - (T * T * T) / 38710000;
     return norm(gmst + lonEast);
   }
 
@@ -313,6 +317,8 @@
 
   /** Next time (after `from`, UTC ms) the Sun is between two longitudes.
    *  Returns { start, end } in UTC ms; start = from if it is there already. */
+  const SUN_DEGREES_PER_DAY = 0.98565; // mean daily motion, for Newton steps
+
   function sunPeriod(startLon, endLon, from) {
     const span = norm(endLon - startLon) || 360;
     const reach = (target, t0) => {
@@ -320,7 +326,7 @@
       for (let k = 0; k < 6; k++) {
         const ahead = norm(target - sunLongitude(julianDay(t)));
         const step = k === 0 ? ahead : ((ahead + 180) % 360) - 180;
-        t += (step / 0.98565) * 86400000;
+        t += (step / SUN_DEGREES_PER_DAY) * MS_PER_DAY;
       }
       return t;
     };
@@ -353,7 +359,7 @@
     const utc = localToUtc(birth.year, birth.month, birth.day, hour, minute, birth.timeZone);
     const jd = julianDay(utc);
     const dayStart = julianDay(localToUtc(birth.year, birth.month, birth.day, 0, 0, birth.timeZone));
-    const dayEnd = dayStart + 1 - 1 / 1440;
+    const dayEnd = dayStart + 1 - 1 / 1440; // 23:59 local
 
     const bodies = PLANET_KEYS.map((key) => {
       const lon = bodyLongitude(key, jd);
@@ -367,8 +373,7 @@
       }
       return placement(key, lon, extra);
     });
-    const byKey = {};
-    bodies.forEach((b) => { byKey[b.key] = b; });
+    const byKey = Object.fromEntries(bodies.map((b) => [b.key, b]));
     if (timeKnown) {
       const a = angles(jd, birth.lat, birth.lon);
       byKey.ascendant = placement("ascendant", a.ascendant);
@@ -386,8 +391,14 @@
       modalities[byKey[k].sign.modality] += weights[k];
     });
     // Ties count as a balance, not a winner.
-    const leaders = (obj) => Object.keys(obj).filter((k) => obj[k] === Math.max(...Object.values(obj)));
-    const top = (obj) => (leaders(obj).length === 1 ? leaders(obj)[0] : null);
+    const leaders = (obj) => {
+      const max = Math.max(...Object.values(obj));
+      return Object.keys(obj).filter((k) => obj[k] === max);
+    };
+    const top = (obj) => {
+      const l = leaders(obj);
+      return l.length === 1 ? l[0] : null;
+    };
 
     return {
       birth, timeKnown, utc, jd, bodies, byKey, elements, modalities,
@@ -443,7 +454,7 @@
   function personalCards(c, today) {
     const links = [];
     const add = (card, roleKey, why) => links.push({ card, roleKey, role: t("role_" + roleKey), why });
-    const cardName = (name) => { const pt = I18N.cardText(name); return pt ? pt.name : name; };
+    const cardName = (name) => (I18N.cardText(name) || { name }).name;
     const sign = (s) => t("sign_" + s.name);
     const now = today || new Date();
     ["sun", "moon", "ascendant"].forEach((key) => {

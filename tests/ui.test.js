@@ -19,8 +19,7 @@ const appSrc = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
 
 const flush = () => new Promise((r) => setImmediate(r));
 
-function load(options) {
-  const opts = options || {};
+function load(opts = {}) {
   const dom = new JSDOM(html, { runScripts: "outside-only", pretendToBeVisual: true, url: "http://localhost/" });
   const w = dom.window;
   if (opts.storage) Object.entries(opts.storage).forEach(([k, v]) => w.localStorage.setItem(k, v));
@@ -48,6 +47,16 @@ function load(options) {
   const $ = (s) => w.document.querySelector(s);
   const $$ = (s) => [...w.document.querySelectorAll(s)];
   return { w, $, $$, T: w.Tarot };
+}
+
+/** Set a field's value and fire "input", as typing would. */
+function typeInto(app, el, value) {
+  el.value = value;
+  el.dispatchEvent(new app.w.Event("input"));
+}
+
+function resetIfDone(app) {
+  if (!app.$("#btn-reset").disabled) app.$("#btn-reset").click();
 }
 
 async function shuffle(app) {
@@ -96,7 +105,8 @@ function checkExplanations(app, spreadKey) {
 }
 
 // ---------------------------------------------------------------------------
-
+// Reading
+// ---------------------------------------------------------------------------
 test("initial screen: menu, disabled deck, only Shuffle available", () => {
   const app = load();
   assert.deepEqual(app.$$(".menu-item").map((b) => b.textContent), ["Reading", "Card Guide", "Birth Chart", "How it works"]);
@@ -151,7 +161,7 @@ test("200 readings through the UI: explanations always match the drawn cards", a
   const seen = {};
   for (let r = 0; r < 200; r++) {
     const spread = spreads[r % 3];
-    if (!app.$("#btn-reset").disabled) app.$("#btn-reset").click();
+    resetIfDone(app);
     pickSpread(app, spread);
     await shuffle(app);
     if (r % 2) { app.$("#btn-cut").click(); await flush(); }
@@ -179,7 +189,7 @@ test("cards drawn through the UI are uniformly random", async () => {
   const counts = {};
   let reversed = 0;
   for (let r = 0; r < N; r++) {
-    if (!app.$("#btn-reset").disabled) app.$("#btn-reset").click();
+    resetIfDone(app);
     await shuffle(app);
     enabledFan(app)[0].click(); // always take the top card: only the shuffle decides
     const e = app.$(".explain");
@@ -201,7 +211,7 @@ test("turning reversals off means no reversed cards", async () => {
   assert.equal(app.$("#reversals").checked, false);
   pickSpread(app, "celtic");
   for (let r = 0; r < 50; r++) {
-    if (!app.$("#btn-reset").disabled) app.$("#btn-reset").click();
+    resetIfDone(app);
     await shuffle(app);
     for (let k = 0; k < 10; k++) enabledFan(app)[0].click();
     assert.ok(app.$$(".explain").every((e) => e.dataset.reversed === "false"));
@@ -214,7 +224,7 @@ test("reversed cards are drawn upside down and labelled", async () => {
   pickSpread(app, "celtic");
   let found = false;
   for (let r = 0; r < 20 && !found; r++) {
-    if (!app.$("#btn-reset").disabled) app.$("#btn-reset").click();
+    resetIfDone(app);
     await shuffle(app);
     for (let k = 0; k < 10; k++) enabledFan(app)[0].click();
     for (const e of app.$$(".explain")) {
@@ -274,14 +284,11 @@ test("Card Guide lists all 78 cards, filters, searches and shows both meanings",
   }
   filter("all");
   const search = app.$("#guide-search");
-  search.value = "heartbreak";
-  search.dispatchEvent(new app.w.Event("input"));
+  typeInto(app, search, "heartbreak");
   assert.deepEqual(app.$$("#guide-grid .guide-item").map((i) => i.getAttribute("aria-label")), ["Three of Swords"]);
-  search.value = "zzzz";
-  search.dispatchEvent(new app.w.Event("input"));
+  typeInto(app, search, "zzzz");
   assert.equal(app.$("#guide-empty").hidden, false);
-  search.value = "";
-  search.dispatchEvent(new app.w.Event("input"));
+  typeInto(app, search, "");
 
   // Every card's detail dialog shows its own data.
   for (const item of app.$$("#guide-grid .guide-item")) {
@@ -299,12 +306,11 @@ test("Card Guide lists all 78 cards, filters, searches and shows both meanings",
 test("a yes/no question gets an answer that combines all the cards", async () => {
   const app = load();
   const q = app.$("#question");
-  q.value = "Will I pass my test tomorrow?";
-  q.dispatchEvent(new app.w.Event("input"));
+  typeInto(app, q, "Will I pass my test tomorrow?");
   assert.match(app.$("#question-hint").textContent, /Yes\/no question/);
   for (const spread of ["single", "three", "celtic"]) {
     for (let r = 0; r < 30; r++) {
-      if (!app.$("#btn-reset").disabled) app.$("#btn-reset").click();
+      resetIfDone(app);
       pickSpread(app, spread);
       await shuffle(app);
       const n = app.T.SPREADS[spread].positions.length;
@@ -327,8 +333,7 @@ test("a yes/no question gets an answer that combines all the cards", async () =>
 test("an open question gets its own kind of answer, not a yes/no", async () => {
   const app = load();
   const q = app.$("#question");
-  q.value = "What should I focus on this month?";
-  q.dispatchEvent(new app.w.Event("input"));
+  typeInto(app, q, "What should I focus on this month?");
   assert.match(app.$("#question-hint").textContent, /Advice question/);
   await shuffle(app);
   for (let k = 0; k < 3; k++) enabledFan(app)[0].click();
@@ -342,8 +347,7 @@ test("an open question gets its own kind of answer, not a yes/no", async () => {
   assert.match(app.$("#status").textContent, /advice answer/);
 
   // Rewording it as a yes/no question after the reading updates the summary.
-  q.value = "Should I focus on my studies?";
-  q.dispatchEvent(new app.w.Event("input"));
+  typeInto(app, q, "Should I focus on my studies?");
   assert.ok(app.$("#summary .answer"));
   assert.match(app.$("#summary .answer-sentence").textContent, /focus on your studies\.$/);
 });
@@ -360,11 +364,10 @@ test("every kind of open question shows the answer deck.js computes, for every s
   };
   for (const [type, text] of Object.entries(questions)) {
     const q = app.$("#question");
-    q.value = text;
-    q.dispatchEvent(new app.w.Event("input"));
-    assert.equal(app.$("#question-hint").textContent.startsWith(app.T.QUESTION_TYPES[type].hint), true, type + " hint");
+    typeInto(app, q, text);
+    assert.ok(app.$("#question-hint").textContent.startsWith(app.T.QUESTION_TYPES[type].hint), type + " hint");
     for (const spread of ["single", "three", "celtic", "choice"]) {
-      if (!app.$("#btn-reset").disabled) app.$("#btn-reset").click();
+      resetIfDone(app);
       pickSpread(app, spread);
       await shuffle(app);
       const n = app.T.SPREADS[spread].positions.length;
@@ -383,8 +386,7 @@ test("every kind of open question shows the answer deck.js computes, for every s
 test("Two Paths: an either/or question gets one card per option and a recommendation", async () => {
   const app = load();
   const q = app.$("#question");
-  q.value = "Should I take the job in Lisbon or stay in Porto?";
-  q.dispatchEvent(new app.w.Event("input"));
+  typeInto(app, q, "Should I take the job in Lisbon or stay in Porto?");
   assert.match(app.$("#question-hint").textContent, /Choose the Two Paths spread/);
   pickSpread(app, "choice");
   assert.doesNotMatch(app.$("#question-hint").textContent, /Choose the Two Paths spread/);
@@ -551,8 +553,7 @@ test("the language menu switches the whole app to Portuguese and back", async ()
   assert.deepEqual(app.$$("#lang-select option").map((o) => o.textContent), ["English", "Português"]);
   assert.equal(app.$("#lang-select").value, "en");
   const q = app.$("#question");
-  q.value = "Vou passar no teste amanhã?";
-  q.dispatchEvent(new app.w.Event("input"));
+  typeInto(app, q, "Vou passar no teste amanhã?");
   chooseLanguage(app, "pt");
 
   assert.equal(app.w.document.documentElement.lang, "pt-PT");
@@ -610,8 +611,7 @@ test("the language is remembered, and defaults to the browser's language", () =>
 test("Card Guide and card descriptions in Portuguese", () => {
   const app = load({ language: "pt-PT" });
   assert.deepEqual(app.$$("#guide-filter button").map((b) => b.textContent), ["Todas", "Arcanos Maiores", "Paus", "Copas", "Espadas", "Ouros"]);
-  app.$("#guide-search").value = "esperança";
-  app.$("#guide-search").dispatchEvent(new app.w.Event("input"));
+  typeInto(app, app.$("#guide-search"), "esperança");
   const found = app.$$("#guide-grid .guide-item").map((b) => b.getAttribute("aria-label"));
   assert.ok(found.includes("A Estrela"), found.join(", "));
   app.$('#guide-grid .guide-item[aria-label="A Estrela"]').click();

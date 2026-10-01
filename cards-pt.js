@@ -649,4 +649,4 @@
   } else {
     root.I18N.CARDS.pt = CARDS_PT;
   }
-})(typeof globalThis !== "undefined" ? globalThis : this);
+})(globalThis);

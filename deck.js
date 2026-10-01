@@ -9,11 +9,23 @@
 (function (root) {
   "use strict";
 
-  // Zodiac data and the Sun's position (for timing questions). In the browser
-  // astro.js is loaded first.
+  // In the browser astro.js and i18n.js are loaded first, as globals.
   const Astro = root.Astro || require("./astro.js");
   const I18N = root.I18N || require("./i18n.js");
   const t = I18N.t;
+
+  const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const signName = (sign) => t("sign_" + sign.name);
+
+  /** Total weight per key, and the keys from heaviest to lightest. Items whose key is empty are skipped. */
+  function tally(list, keyOf, weightOf = () => 1) {
+    const counts = {};
+    for (const item of list) {
+      const key = keyOf(item);
+      if (key) counts[key] = (counts[key] || 0) + weightOf(item);
+    }
+    return { counts, ranked: Object.keys(counts).sort((a, b) => counts[b] - counts[a]) };
+  }
 
   // ---------------------------------------------------------------------------
   // Major Arcana (0–21). Astrology follows the Golden Dawn attributions; the
@@ -693,9 +705,7 @@
           name: name,
           suit: suitKey,
           element: suit.element,
-          astro: astrology.kind === "season"
-            ? astrology.label[0].toUpperCase() + astrology.label.slice(1)
-            : astrology.label,
+          astro: astrology.kind === "season" ? capitalize(astrology.label) : astrology.label,
           astrology: astrology,
           keywords: { upright: c.up, reversed: c.rev },
           meaning: { upright: c.upright, reversed: c.reversed },
@@ -741,28 +751,23 @@
 
   /** Fisher–Yates shuffle. Returns a new array; each card also gets a random
    *  orientation (like turning cards while shuffling) when reversals are on. */
-  function shuffle(cards, options) {
-    const opts = options || {};
-    const randomInt = makeRandomInt(opts.rng);
+  function shuffle(cards, { rng, reversals } = {}) {
+    const randomInt = makeRandomInt(rng);
     const out = cards.map((c) => ({
       card: c.card || c,
-      reversed: opts.reversals ? randomInt(2) === 1 : false,
+      reversed: reversals ? randomInt(2) === 1 : false,
     }));
     for (let i = out.length - 1; i > 0; i--) {
       const j = randomInt(i + 1);
-      const tmp = out[i];
-      out[i] = out[j];
-      out[j] = tmp;
+      [out[i], out[j]] = [out[j], out[i]];
     }
     return out;
   }
 
   /** Cut the deck at a random point (never at the very top or bottom). */
-  function cut(pile, options) {
-    const opts = options || {};
+  function cut(pile, { rng } = {}) {
     if (pile.length < 2) return pile.slice();
-    const randomInt = makeRandomInt(opts.rng);
-    const at = 1 + randomInt(pile.length - 1);
+    const at = 1 + makeRandomInt(rng)(pile.length - 1);
     return pile.slice(at).concat(pile.slice(0, at));
   }
 
@@ -889,9 +894,8 @@
   function astroText(card) {
     if (I18N.lang === "en") return card.astro;
     const a = card.astrology;
-    const sign = (s) => t("sign_" + s.name);
-    if (a.kind === "decan") return t("decan_label", { planet: t("planet_" + a.planet), sign: sign(a.sign) });
-    if (a.kind === "sign" || a.kind === "court") return sign(a.sign);
+    if (a.kind === "decan") return t("decan_label", { planet: t("planet_" + a.planet), sign: signName(a.sign) });
+    if (a.kind === "sign" || a.kind === "court") return signName(a.sign);
     if (a.kind === "season") return capitalize(t("season_" + a.label));
     const modern = /^(Fire|Water|Air|Earth) \(modern: (\w+)\)$/.exec(card.astro);
     if (modern) return t("astro_modern", { element: t("el_" + modern[1]), planet: t("planet_" + modern[2]) });
@@ -929,14 +933,10 @@
       notes.push(t("note_no_majors"));
     }
 
-    const suitCounts = {};
-    drawn.forEach((d) => {
-      if (d.card.suit) suitCounts[d.card.suit] = (suitCounts[d.card.suit] || 0) + 1;
-    });
-    const suitKeys = Object.keys(suitCounts).sort((a, b) => suitCounts[b] - suitCounts[a]);
-    if (n >= 3 && suitKeys.length && suitCounts[suitKeys[0]] >= 2 &&
-        (suitKeys.length === 1 || suitCounts[suitKeys[0]] > suitCounts[suitKeys[1]])) {
-      const s = suitKeys[0];
+    const { counts: suitCounts, ranked: suits } = tally(drawn, (d) => d.card.suit);
+    if (n >= 3 && suits.length && suitCounts[suits[0]] >= 2 &&
+        (suits.length === 1 || suitCounts[suits[0]] > suitCounts[suits[1]])) {
+      const s = suits[0];
       notes.push(t("note_suit", { suit: t("suit_" + s), element: t("el_" + SUITS[s].element), domain: t("domain_" + s) }));
     }
 
@@ -1020,7 +1020,7 @@
       if (aux === "was") aux = "were";
     }
     if (aux === "shall") aux = "should";
-    const neg = aux === "are" ? "aren't" : aux === "were" ? "weren't" : NEGATIVES[aux];
+    const neg = NEGATIVES[aux];
     const rest = swapPronounsEn(words.slice(restFrom).join(" "));
     const clause = (verb) => [subject, verb, rest].filter(Boolean).join(" ");
     // "Do I need…" → "you need…" (the emphatic "do" only reads well after "Yes,").
@@ -1073,14 +1073,16 @@
       const m = /^([\p{L}]+)(-(me|nos))?([.,;:!?]*)$/u.exec(w);
       if (!m) return w;
       const word = m[1], lower = word.toLowerCase();
-      const swapped = PT_SWAPS[lower] ? (word[0] === word[0].toUpperCase() && word[0] !== word[0].toLowerCase() ? capitalize(PT_SWAPS[lower]) : PT_SWAPS[lower]) : word;
+      const capitalized = word[0] !== word[0].toLowerCase();
+      const swapped = PT_SWAPS[lower] ? (capitalized ? capitalize(PT_SWAPS[lower]) : PT_SWAPS[lower]) : word;
       const clitic = m[3] ? "-" + (m[3] === "me" ? "te" : "vos") : "";
       return swapped + clitic + m[4];
     }).join(" ");
   }
 
-  /** 1st person → 2nd person; the verb unchanged if it isn't 1st person; null if unsure. */
   const PT_SECOND = new Set(Object.values(PT_VERBS).filter((v) => /s$/.test(v)));
+
+  /** 1st person → 2nd person; the verb unchanged if it isn't 1st person; null if unsure. */
   function ptVerb(word, firstPerson) {
     const lower = word.toLowerCase();
     if (PT_VERBS[lower]) return PT_VERBS[lower];
@@ -1172,7 +1174,7 @@
   function yesNoReading(drawn, spreadKey) {
     const positions = spreadText(spreadKey).positions;
     const items = drawn.map((d, i) => {
-      const value = d.card.yesNo[d.reversed ? "reversed" : "upright"];
+      const value = d.card.yesNo[orientation(d)];
       const weight = positions[i].weight;
       return { card: d.card, reversed: d.reversed, position: positions[i].name, weight, value,
         lean: leanText(value), contribution: weight * value };
@@ -1203,10 +1205,12 @@
   }
 
   const orientation = (d) => (d.reversed ? "reversed" : "upright");
-  const pair = (d) => { const kw = text(d.card).keywords[orientation(d)]; return t("pair", { a: kw[0], b: kw[1] }); };
+  const pair = (d) => {
+    const [a, b] = text(d.card).keywords[orientation(d)];
+    return t("pair", { a, b });
+  };
   const ref = (d) => t(d.reversed ? "ref_reversed" : "ref", { name: text(d.card).name });
   const meaningOf = (d) => text(d.card).meaning[orientation(d)];
-  const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
   /** Weave all cards into one paragraph that reads the spread as a story. */
   function narrate(drawn, spreadKey) {
@@ -1292,10 +1296,10 @@
     return m ? m[1] : null;
   }
 
-  const formatDate = (ms) => {
+  function formatDate(ms) {
     const d = new Date(ms);
     return t("date", { d: d.getUTCDate(), month: t("months")[d.getUTCMonth()], y: d.getUTCFullYear() });
-  };
+  }
 
   /** "20–30 March 2027", "21 June – 22 September 2027" or "22 December 2026 – 20 March 2027". */
   function formatRange(startMs, endMs) {
@@ -1308,9 +1312,8 @@
 
   function paceNote(items) {
     const notes = [];
-    const counts = {}; // weighted by position, so ties are rare and the Future/Outcome decides
-    items.forEach((it) => { if (it.card.suit) counts[it.card.suit] = (counts[it.card.suit] || 0) + it.position.weight; });
-    const top = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+    // Weighted by position, so ties are rare and the Future/Outcome decides.
+    const top = tally(items, (it) => it.card.suit, (it) => it.position.weight).ranked[0];
     if (top) notes.push(t("pace_line", { pace: t("pace_" + top), suit: t("suit_" + top) }));
     const majors = items.filter((it) => it.card.arcana === "major").length;
     if (items.length > 1 && majors / items.length > 0.5) notes.push(t("pace_majors"));
@@ -1323,8 +1326,6 @@
     const key = it.value > 0 ? "advice_focus" : it.value < 0 ? "advice_avoid" : it.reversed ? "advice_careful" : "advice_room";
     return t(key, { pair: pair(it), ref: ref(it) });
   }
-
-  const signName = (s) => t("sign_" + s.name);
 
   const ANSWERS = {
     outlook(items, ctx) {
@@ -1353,12 +1354,12 @@
     why(items) {
       const order = ["Foundation", "Past", "Recent Past", "Where you stand", "Guidance"];
       const causes = order.map((n) => items.find((it) => it.position.key === n)).filter(Boolean);
-      const root = causes[0] || items[0];
-      const details = [meaningOf(root)];
+      const cause = causes[0] || items[0];
+      const details = [meaningOf(cause)];
       if (causes[1]) details.push(t("why_fed", { pair: pair(causes[1]), ref: ref(causes[1]), position: causes[1].position.name }));
       const challenge = items.find((it) => it.position.key === "Challenge");
       if (challenge) details.push(t("why_keeps", { pair: pair(challenge), ref: ref(challenge), position: challenge.position.name }));
-      return { headline: t("why_head", { pair: pair(root), ref: ref(root) }), details };
+      return { headline: t("why_head", { pair: pair(cause), ref: ref(cause) }), details };
     },
 
     who(items) {
@@ -1384,17 +1385,12 @@
     },
 
     where(items) {
-      const tally = {};
-      items.forEach((it) => {
-        const e = elementOf(it.card);
-        if (e) tally[e] = (tally[e] || 0) + it.position.weight;
-      });
-      const els = Object.keys(tally).sort((a, b) => tally[b] - tally[a]);
+      const { counts, ranked: els } = tally(items, (it) => elementOf(it.card), (it) => it.position.weight);
       if (!els.length) return { headline: t("where_none"), details: [] };
       const e = els[0];
       const cards = items.filter((it) => elementOf(it.card) === e).map((it) => text(it.card).name);
       const details = [t("where_detail", { element: t("el_" + e), cards: cards.join(", "), direction: t("dir_" + e) })];
-      if (els[1] && tally[els[1]] === tally[e]) details.push(t("where_also", { places: t("places_" + els[1]), element: t("el_" + els[1]) }));
+      if (els[1] && counts[els[1]] === counts[e]) details.push(t("where_also", { places: t("places_" + els[1]), element: t("el_" + els[1]) }));
       return { headline: capitalize(t("places_" + e)) + ".", details };
     },
 
@@ -1450,7 +1446,7 @@
    * { type, label, tone, headline, details[], score } or null. `options.now`
    * (Date or ms) sets "today" for timing answers.
    */
-  function openAnswer(question, drawn, spreadKey, options) {
+  function openAnswer(question, drawn, spreadKey, { now } = {}) {
     const type = classifyQuestion(question);
     if (!type || type === "yesno" || !drawn.length) return null;
     const positions = spreadText(spreadKey).positions;
@@ -1460,7 +1456,7 @@
       card: d.card, reversed: d.reversed, index: i, value: reading.items[i].value,
       position: Object.assign({ key: keys[i].name }, positions[i]), // key: the English name, for logic
     }));
-    const ctx = { question, spreadKey, reading, now: (options || {}).now };
+    const ctx = { question, spreadKey, reading, now };
     return Object.assign({ type, label: QUESTION_TYPES[type].label, tone: "open", score: null, details: [] },
       ANSWERS[type](items, ctx));
   }
@@ -1481,13 +1477,8 @@
   /** Compare the reading's main element with the chart's strongest element. */
   function elementHarmony(chartElement, drawn) {
     if (!chartElement || drawn.length < 3) return null;
-    const tally = {};
-    drawn.forEach((d) => {
-      const e = elementOf(d.card);
-      if (e) tally[e] = (tally[e] || 0) + 1;
-    });
-    const els = Object.keys(tally).sort((a, b) => tally[b] - tally[a]);
-    if (!els.length || (els[1] && tally[els[1]] === tally[els[0]])) return null;
+    const { counts, ranked: els } = tally(drawn, (d) => elementOf(d.card));
+    if (!els.length || (els[1] && counts[els[1]] === counts[els[0]])) return null;
     const e = els[0];
     return e === chartElement
       ? t("harmony_same", { element: t("el_" + e) })
@@ -1507,4 +1498,4 @@
   } else {
     root.Tarot = api;
   }
-})(typeof globalThis !== "undefined" ? globalThis : this);
+})(globalThis);

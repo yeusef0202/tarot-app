@@ -36,6 +36,8 @@ function mentions(text, term) {
 
 const byName = Object.fromEntries(T.DECK.map((c) => [c.name, c]));
 const indexOf = Object.fromEntries(T.DECK.map((c, i) => [c.id, i]));
+const up = (name) => ({ card: byName[name], reversed: false });
+const rev = (name) => ({ card: byName[name], reversed: true });
 
 // ---------------------------------------------------------------------------
 // 1. Deck structure
@@ -387,22 +389,21 @@ test("spreads have the right positions (Celtic Cross in Waite's order)", () => {
 });
 
 test("summary detects Major Arcana weight, dominant suit, reversals, courts and aces", () => {
-  const d = (name, reversed = false) => ({ card: byName[name], reversed });
-  const majors = T.summarize([d("The Tower"), d("Death"), d("Three of Cups")]);
+  const majors = T.summarize([up("The Tower"), up("Death"), up("Three of Cups")]);
   assert.ok(majors.some((n) => n.startsWith("Many Major Arcana (2 of 3)")));
 
-  const cups = T.summarize([d("Two of Cups"), d("Ten of Cups"), d("Five of Swords")]);
+  const cups = T.summarize([up("Two of Cups"), up("Ten of Cups"), up("Five of Swords")]);
   assert.ok(cups.some((n) => n.includes("Dominant suit: Cups (Water)")));
   assert.ok(cups.some((n) => n.startsWith("No Major Arcana")));
 
-  const tie = T.summarize([d("Two of Cups"), d("Ten of Cups"), d("Five of Swords"), d("Six of Swords")]);
+  const tie = T.summarize([up("Two of Cups"), up("Ten of Cups"), up("Five of Swords"), up("Six of Swords")]);
   assert.ok(!tie.some((n) => n.includes("Dominant suit")), "no dominant suit on a tie");
 
-  const rev = T.summarize([d("The Sun", true), d("Ace of Wands", true), d("Ace of Cups")]);
-  assert.ok(rev.some((n) => n.startsWith("Mostly reversed")));
-  assert.ok(rev.some((n) => n.startsWith("2 Aces")));
+  const reversed = T.summarize([rev("The Sun"), rev("Ace of Wands"), up("Ace of Cups")]);
+  assert.ok(reversed.some((n) => n.startsWith("Mostly reversed")));
+  assert.ok(reversed.some((n) => n.startsWith("2 Aces")));
 
-  const courts = T.summarize([d("Queen of Swords"), d("King of Wands"), d("The Star")]);
+  const courts = T.summarize([up("Queen of Swords"), up("King of Wands"), up("The Star")]);
   assert.ok(courts.some((n) => n.startsWith("2 court cards")));
 
   assert.deepEqual(T.summarize([]), []);
@@ -465,30 +466,29 @@ test("answers the question in a full sentence", () => {
 });
 
 test("yes/no verdict combines all cards, weighted by position", () => {
-  const d = (name, reversed = false) => ({ card: byName[name], reversed });
   // One card: strong card → Yes/No, mild card → Likely, neutral → Unclear.
-  assert.equal(T.yesNoReading([d("The Sun")], "single").verdict.key, "yes");
-  assert.equal(T.yesNoReading([d("The Fool")], "single").verdict.key, "likely_yes");
-  assert.equal(T.yesNoReading([d("The Hermit")], "single").verdict.key, "unclear");
-  assert.equal(T.yesNoReading([d("The Sun", true)], "single").verdict.key, "likely_no");
-  assert.equal(T.yesNoReading([d("The Tower")], "single").verdict.key, "no");
+  assert.equal(T.yesNoReading([up("The Sun")], "single").verdict.key, "yes");
+  assert.equal(T.yesNoReading([up("The Fool")], "single").verdict.key, "likely_yes");
+  assert.equal(T.yesNoReading([up("The Hermit")], "single").verdict.key, "unclear");
+  assert.equal(T.yesNoReading([rev("The Sun")], "single").verdict.key, "likely_no");
+  assert.equal(T.yesNoReading([up("The Tower")], "single").verdict.key, "no");
 
-  const allYes = T.yesNoReading([d("The Sun"), d("The Star"), d("The World")], "three");
+  const allYes = T.yesNoReading([up("The Sun"), up("The Star"), up("The World")], "three");
   assert.equal(allYes.verdict.key, "yes");
   assert.equal(allYes.score, 1);
-  assert.equal(T.yesNoReading([d("The Tower"), d("Three of Swords"), d("Ten of Swords")], "three").verdict.key, "no");
+  assert.equal(T.yesNoReading([up("The Tower"), up("Three of Swords"), up("Ten of Swords")], "three").verdict.key, "no");
 
   // The Future card outweighs the Past card.
-  const futureBad = T.yesNoReading([d("The Sun"), d("The Hermit"), d("The Tower")], "three");
+  const futureBad = T.yesNoReading([up("The Sun"), up("The Hermit"), up("The Tower")], "three");
   assert.ok(futureBad.score < 0, "future Tower outweighs past Sun");
   assert.equal(futureBad.keyCard.card.name, "The Tower");
-  const futureGood = T.yesNoReading([d("The Tower"), d("The Hermit"), d("The Sun")], "three");
+  const futureGood = T.yesNoReading([up("The Tower"), up("The Hermit"), up("The Sun")], "three");
   assert.ok(futureGood.score > 0);
   assert.equal(futureGood.keyCard.card.name, "The Sun");
 
   // In the Celtic Cross the Outcome card counts most.
   const celtic = ["The Hermit", "Two of Swords", "Justice", "The Hanged Man", "Seven of Cups",
-    "Two of Pentacles", "Four of Swords", "Page of Swords", "Queen of Swords", "The Sun"].map((n) => d(n));
+    "Two of Pentacles", "Four of Swords", "Page of Swords", "Queen of Swords", "The Sun"].map(up);
   const r = T.yesNoReading(celtic, "celtic");
   assert.equal(r.keyCard.position, "Outcome");
   assert.ok(r.score > 0);
@@ -531,8 +531,6 @@ test("the combined interpretation mentions every card in its position", () => {
 // ---------------------------------------------------------------------------
 // 6. Open questions (not yes/no)
 // ---------------------------------------------------------------------------
-const up = (n) => ({ card: byName[n], reversed: false });
-const rev = (n) => ({ card: byName[n], reversed: true });
 const NOW = Date.UTC(2026, 8, 29); // 29 Sep 2026: the Sun is at ~6° Libra
 
 test("questions are sorted into types", () => {

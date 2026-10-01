@@ -19,7 +19,9 @@ test("Sun, Moon and planets match PyEphem (120 random dates, 1900–2049)", () =
   for (const row of REF.positions) {
     const jd = A.julianDay(row.utc);
     for (const body of Object.keys(tol)) {
-      const ours = body === "sun" ? A.sunLongitude(jd) : body === "moon" ? A.moonLongitude(jd) : A.planetLongitude(body, jd);
+      const ours = body === "sun" ? A.sunLongitude(jd)
+        : body === "moon" ? A.moonLongitude(jd)
+        : A.planetLongitude(body, jd);
       assert.ok(angleDiff(ours, row[body]) < tol[body], `${body} on ${iso(row.utc)}: ${ours.toFixed(3)} vs ${row[body]}`);
     }
   }
@@ -84,7 +86,8 @@ test("signs: boundaries, elements and their Major Arcana cards", () => {
     Aquarius: "The Star", Pisces: "The Moon",
   };
   assert.deepEqual(A.SIGNS.map((s) => [s.name, s.card]), Object.entries(cards));
-  assert.deepEqual(A.SIGNS.map((s) => s.element), ["Fire", "Earth", "Air", "Water"].concat(["Fire", "Earth", "Air", "Water"], ["Fire", "Earth", "Air", "Water"]));
+  const elements = ["Fire", "Earth", "Air", "Water"];
+  assert.deepEqual(A.SIGNS.map((s) => s.element), [...elements, ...elements, ...elements]);
   // The sign cards agree with the astrology printed on the cards themselves.
   for (const s of A.SIGNS) assert.equal(T.DECK.find((c) => c.name === s.card).astro, s.name);
 });

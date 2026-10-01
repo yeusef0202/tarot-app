@@ -304,7 +304,7 @@
       "ui.place_none": "No places found. Check the spelling, or enter the coordinates manually.",
       "ui.place_choose": "Choose your place of birth:",
       "ui.place_offline": "Couldn't reach the place search. Check your connection, or enter the coordinates manually.",
-      "ui.big_sun": "Sun sign", "ui.big_moon": "Moon sign", "ui.big_ascendant": "Rising sign",
+      "ui.big_sun": "Sun sign", "ui.big_moon": "Moon sign", "ui.big_ascendant": "Rising sign", "ui.big_rising": "Rising",
       "ui.unknown": "Unknown",
       "ui.rising_unknown": "Your rising sign depends on the exact time and place of birth. Add your birth time to see it.",
       "ui.big_meta": "{element} · {modality} · ruled by {ruler}",
@@ -337,11 +337,11 @@
       "ui.sky_line": "{body} is in <b>{sign}</b> ({degree}): {cards}",
       "ui.sky_sun": "The Sun", "ui.sky_moon": "The Moon",
       "ui.sky_hint": "The Sun's decan card is the card of these ten days, good for reflection.",
-      "ui.big_rising": "Rising",
     },
 
     // =========================================================================
     pt: {
+      // ----------------------------------------------------------- cards
       pair: "{a} e {b}",
       ref: "{name}",
       ref_reversed: "{name}, invertida",
@@ -360,6 +360,7 @@
       list_and: "e",
       list_or: "ou",
 
+      // ----------------------------------------------------------- summary
       note_many_majors: "Muitos Arcanos Maiores ({majors} de {n}): estão em jogo grandes temas de vida e forças que vão além do dia a dia. Este é um momento importante.",
       note_no_majors: "Nenhum Arcano Maior: a situação passa sobretudo por assuntos do dia a dia que estão sob o teu controlo.",
       note_suit: "Naipe dominante: {suit} ({element}). A leitura centra-se em {domain}.",
@@ -367,6 +368,7 @@
       note_courts: "{courts} cartas da corte: outras pessoas, ou diferentes lados da tua personalidade, têm um papel importante.",
       note_aces: "{aces} Ases: uma forte energia de novos começos e novas oportunidades.",
 
+      // ----------------------------------------------------------- yes / no
       verdict_yes: "Sim",
       verdict_yes_text: "As cartas dão um sim claro. A energia à volta da tua pergunta é muito positiva.",
       verdict_likely_yes: "Provavelmente sim",
@@ -379,11 +381,13 @@
       verdict_no_text: "As cartas apontam para o não, pelo menos não da forma que esperas neste momento.",
       lean_2: "sim forte", lean_1: "sim", lean_0: "talvez", "lean_-1": "não", "lean_-2": "não forte",
 
+      // ----------------------------------------------------------- story
       story_item: "{lead} {pair} ({ref}).",
       story_good: "No geral, a energia desta leitura é encorajadora.",
       story_bad: "No geral, esta leitura aponta para desafios que vais ter de ultrapassar.",
       story_mixed: "No geral, a leitura é mista: o desfecho depende da forma como lidares com o que as cartas mostram.",
 
+      // ----------------------------------------------------------- open questions
       qt_yesno: "Sim / Não",
       qt_yesno_hint: "✓ Pergunta de sim/não: vais receber uma resposta de sim ou não quando a tiragem estiver completa.",
       qt_choice: "Escolha",
@@ -480,6 +484,7 @@
       harmony_same: "Esta leitura é sobretudo de {element}, o elemento mais forte do teu mapa: a situação joga a favor dos teus pontos fortes naturais.",
       harmony_diff: "Esta leitura é sobretudo de {element} ({traits}), enquanto o teu mapa é sobretudo de {chart}: pede-te que trabalhes de uma forma que pode não te ser natural.",
 
+      // ----------------------------------------------------------- astrology
       sign_Aries: "Carneiro", sign_Taurus: "Touro", sign_Gemini: "Gémeos", sign_Cancer: "Caranguejo",
       sign_Leo: "Leão", sign_Virgo: "Virgem", sign_Libra: "Balança", sign_Scorpio: "Escorpião",
       sign_Sagittarius: "Sagitário", sign_Capricorn: "Capricórnio", sign_Aquarius: "Aquário", sign_Pisces: "Peixes",
@@ -531,6 +536,7 @@
       why_birth: "{what}, segundo a numerologia do tarot ({m} + {d} + {y}).",
       why_year: "A tua carta do ano, do aniversário de {y} ao de {y2} ({m} + {d} + {y}).",
 
+      // ----------------------------------------------------------- interface
       "ui.title": "Arcana · Leitura de Tarot",
       "ui.lang": "Idioma",
       "ui.menu.reading": "Leitura", "ui.menu.guide": "Guia das Cartas", "ui.menu.chart": "Mapa Astral", "ui.menu.about": "Como funciona",
@@ -623,7 +629,7 @@
       "ui.place_none": "Não foi encontrado nenhum lugar. Verifica a ortografia, ou introduz as coordenadas manualmente.",
       "ui.place_choose": "Escolhe o teu local de nascimento:",
       "ui.place_offline": "Não foi possível aceder à pesquisa de lugares. Verifica a ligação, ou introduz as coordenadas manualmente.",
-      "ui.big_sun": "Signo solar", "ui.big_moon": "Signo lunar", "ui.big_ascendant": "Ascendente",
+      "ui.big_sun": "Signo solar", "ui.big_moon": "Signo lunar", "ui.big_ascendant": "Ascendente", "ui.big_rising": "Ascendente",
       "ui.unknown": "Desconhecido",
       "ui.rising_unknown": "O teu ascendente depende da hora e do local exatos de nascimento. Adiciona a hora de nascimento para o veres.",
       "ui.big_meta": "{element} · {modality} · regido por {ruler}",
@@ -656,7 +662,6 @@
       "ui.sky_line": "{body} está em <b>{sign}</b> ({degree}): {cards}",
       "ui.sky_sun": "O Sol", "ui.sky_moon": "A Lua",
       "ui.sky_hint": "A carta do decanato do Sol é a carta destes dez dias, boa para reflexão.",
-      "ui.big_rising": "Ascendente",
     },
   };
 
@@ -680,16 +685,14 @@
   }
 
   /** "a, b and c" / "a, b e c". */
-  function joinList(items, word) {
-    const w = t(word || "list_and");
+  function joinList(items, word = "list_and") {
     if (items.length <= 1) return items.join("");
-    return items.slice(0, -1).join(", ") + " " + w + " " + items[items.length - 1];
+    return items.slice(0, -1).join(", ") + " " + t(word) + " " + items[items.length - 1];
   }
 
   /** Portuguese (or other) card text, or null in English. */
   function cardText(englishName) {
-    const table = CARDS[lang];
-    return table ? table[englishName] || null : null;
+    return (CARDS[lang] && CARDS[lang][englishName]) || null;
   }
 
   const api = {
@@ -703,4 +706,4 @@
   } else {
     root.I18N = api;
   }
-})(typeof globalThis !== "undefined" ? globalThis : this);
+})(globalThis);

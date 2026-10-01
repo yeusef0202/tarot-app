@@ -49,6 +49,7 @@
 
   const signName = (s) => t("sign_" + s.name);
   const nameOf = (d) => (d.reversed ? t("ui.reversed_paren", { name: tx(d.card).name }) : tx(d.card).name);
+  const shortName = (d) => tx(d.card).name + (d.reversed ? " (" + t("ui.r_short") + ")" : "");
 
   // ------------------------------------------------------------ rendering
   function cardFrontHtml(card) {
@@ -93,6 +94,8 @@
     );
   }
 
+  const faceUpHtml = (card, reversed) => cardHtml(card, reversed, { flipped: true, static: true });
+
   function metaLine(card) {
     const text = tx(card);
     if (card.arcana === "major") return t("ui.major_meta", { numeral: card.numeral, astro: text.astro });
@@ -106,7 +109,7 @@
   function miniCardHtml(name, caption) {
     const c = cardByName(name);
     return '<button type="button" class="mini-card" data-card-id="' + c.id + '" aria-label="' + escapeHtml(tx(c).name) + '">' +
-      cardHtml(c, false, { flipped: true, static: true }) +
+      faceUpHtml(c, false) +
       (caption ? '<span class="mini-caption">' + escapeHtml(caption) + "</span>" : "") + "</button>";
   }
 
@@ -198,13 +201,14 @@
         if (d) cls.push("filled");
         if (i === nextIndex) cls.push("next");
         if (i === state.activeIndex) cls.push("active");
-        const inner = d ? cardHtml(d.card, d.reversed, { flipped: true, static: true }) : "<span>" + (i + 1) + "</span>";
+        const inner = d ? faceUpHtml(d.card, d.reversed) : "<span>" + (i + 1) + "</span>";
+        const label = (i + 1) + ". " + escapeHtml(pos.name);
         return (
           '<div class="' + cls.join(" ") + '" data-position="' + i + '"' +
           (d ? ' role="button" tabindex="0" aria-label="' + escapeHtml(t("ui.show_meaning", { name: tx(d.card).name })) + '"' : "") +
-          ' title="' + (i + 1) + ". " + escapeHtml(pos.name) + '">' +
+          ' title="' + label + '">' +
           '<div class="slot-frame">' + inner + "</div>" +
-          '<div class="slot-label"><b>' + (i + 1) + ". " + escapeHtml(pos.name) + "</b>" +
+          '<div class="slot-label"><b>' + label + "</b>" +
           (d ? escapeHtml(tx(d.card).name) + (d.reversed ? '<br><span class="rev-tag">' + t("ui.reversed") + "</span>" : "") : "") +
           "</div></div>"
         );
@@ -221,7 +225,7 @@
     return (
       '<article class="explain ' + (c.suit || "major") + '" id="explain-' + i + '" data-position="' + i +
       '" data-card-id="' + c.id + '" data-reversed="' + d.reversed + '">' +
-      "<div>" + cardHtml(c, d.reversed, { flipped: true, static: true }) + "</div>" +
+      "<div>" + faceUpHtml(c, d.reversed) + "</div>" +
       "<div>" +
       '<p class="explain-pos"><b>' + (i + 1) + ". " + escapeHtml(pos.name) + "</b></p>" +
       '<p class="pos-meaning">' + escapeHtml(pos.meaning) + "</p>" +
@@ -245,14 +249,20 @@
 
   function renderExplanations() {
     // Most recent draw first, so the newest explanation is right below the spread.
-    const html = state.drawn.map((d, i) => ({ d, i })).reverse().map(({ d, i }) => explanationHtml(d, i)).join("");
-    $("#explanations").innerHTML = html;
+    $("#explanations").innerHTML = state.drawn.map(explanationHtml).reverse().join("");
   }
 
   function meterHtml(score, left, right) {
     return '<div class="meter" aria-hidden="true"><span>' + left + '</span><div class="meter-track">' +
       '<div class="meter-marker" style="left:' + ((score + 1) * 50).toFixed(1) + '%"></div></div><span>' + right + "</span></div>";
   }
+
+  function answerHeadHtml(label, q) {
+    return '<div class="answer-head"><span class="answer-label">' + escapeHtml(label) + "</span>" +
+      '<span class="question-echo">“' + escapeHtml(q) + "”</span></div>";
+  }
+
+  const answerNoteHtml = () => '<p class="answer-note">' + t("ui.note") + "</p>";
 
   function answerHtml(q) {
     const r = T.yesNoReading(state.drawn, state.spread);
@@ -262,16 +272,15 @@
     const leanClass = (val) => (val > 0 ? "yes" : val < 0 ? "no" : "maybe");
     return (
       '<div class="answer answer-' + v.key + '" data-verdict="' + v.key + '" data-score="' + r.score.toFixed(3) + '">' +
-      '<div class="answer-head"><span class="answer-label">' + escapeHtml(v.label) + "</span>" +
-      '<span class="question-echo">“' + escapeHtml(q) + "”</span></div>" +
+      answerHeadHtml(v.label, q) +
       (sentence ? '<p class="answer-sentence">' + escapeHtml(sentence) + "</p>" : "") +
       '<p class="answer-text">' + escapeHtml(v.text) + "</p>" +
       meterHtml(r.score, t("ui.meter_no"), t("ui.meter_yes")) +
       '<p class="answer-key">' + t("ui.key_card", { card: escapeHtml(nameOf(k)), position: escapeHtml(k.position), lean: escapeHtml(k.lean) }) + "</p>" +
       '<ul class="lean-list">' + r.items.map((it) =>
-        "<li>" + escapeHtml(it.position) + ": " + escapeHtml(tx(it.card).name) + (it.reversed ? " (" + t("ui.r_short") + ")" : "") +
+        "<li>" + escapeHtml(it.position) + ": " + escapeHtml(shortName(it)) +
         ' <span class="lean lean-' + leanClass(it.value) + '">' + escapeHtml(it.lean) + "</span></li>").join("") + "</ul>" +
-      '<p class="answer-note">' + t("ui.note") + "</p>" +
+      answerNoteHtml() +
       "</div>"
     );
   }
@@ -283,12 +292,11 @@
     return (
       '<div class="answer answer-' + a.tone + '" data-type="' + a.type + '"' +
       (a.score != null ? ' data-score="' + a.score.toFixed(3) + '"' : "") + ">" +
-      '<div class="answer-head"><span class="answer-label">' + escapeHtml(a.label) + "</span>" +
-      '<span class="question-echo">“' + escapeHtml(q) + "”</span></div>" +
+      answerHeadHtml(a.label, q) +
       '<p class="answer-sentence">' + escapeHtml(a.headline) + "</p>" +
       (a.score != null ? meterHtml(a.score, t("ui.meter_bad"), t("ui.meter_good")) : "") +
       (a.details.length ? '<ul class="answer-details">' + a.details.map((d) => "<li>" + escapeHtml(d) + "</li>").join("") + "</ul>" : "") +
-      '<p class="answer-note">' + t("ui.note") + "</p>" +
+      answerNoteHtml() +
       "</div>"
     );
   }
@@ -318,6 +326,7 @@
     const q = $("#question").value.trim();
     const yesNo = T.isYesNoQuestion(q);
     const notes = T.summarize(state.drawn);
+    const positions = spreadDef().positions;
     el.innerHTML =
       "<h2>" + t("ui.your_reading") + "</h2>" +
       (yesNo ? answerHtml(q) : q ? openAnswerHtml(q) : "") +
@@ -326,7 +335,7 @@
       (notes.length ? "<h3>" + t("ui.patterns") + "</h3><ul>" + notes.map((n) => "<li>" + escapeHtml(n) + "</li>").join("") + "</ul>" : "") +
       chartLinksHtml() +
       '<p class="cards-line">' +
-      state.drawn.map((d, i) => (i + 1) + ". " + spreadDef().positions[i].name + ": " + tx(d.card).name + (d.reversed ? " (" + t("ui.r_short") + ")" : "")).map(escapeHtml).join(" · ") +
+      state.drawn.map((d, i) => escapeHtml((i + 1) + ". " + positions[i].name + ": " + shortName(d))).join(" · ") +
       "</p>";
     el.hidden = false;
   }
@@ -381,7 +390,7 @@
     state.busy = true;
     renderButtons();
     fan.classList.remove(cls);
-    void fan.offsetWidth; // restart animation
+    void fan.offsetWidth; // force a reflow so the animation restarts
     fan.classList.add(cls);
     return new Promise((resolve) =>
       setTimeout(() => {
@@ -427,15 +436,10 @@
     const pos = state.drawn.length - 1;
     state.activeIndex = pos;
 
-    renderFan();
-    renderSpread();
-    renderExplanations();
-    renderSummary();
-    renderButtons();
+    renderAll();
 
     // Flip animation (pure CSS, so the card always ends face up).
-    const slotCard = document.querySelector('.slot[data-position="' + pos + '"] .card');
-    if (slotCard) slotCard.classList.add("flip-in");
+    $('.slot[data-position="' + pos + '"] .card').classList.add("flip-in");
 
     if (phase() === "complete") {
       setStatus(completeStatus);
@@ -489,18 +493,17 @@
     });
     $("#guide-grid").innerHTML = cards
       .map((c) => '<button type="button" class="guide-item" data-card-id="' + c.id + '" aria-label="' + escapeHtml(tx(c).name) + '">' +
-        cardHtml(c, false, { flipped: true, static: true }) + "</button>")
+        faceUpHtml(c, false) + "</button>")
       .join("");
     $("#guide-empty").hidden = cards.length > 0;
   }
 
   function renderCardDialog(id) {
     const c = T.DECK.find((x) => x.id === id);
-    if (!c) return false;
     const text = tx(c);
     $("#card-dialog-body").innerHTML =
       '<div class="dialog-card" data-card-id="' + c.id + '">' +
-      "<div>" + cardHtml(c, false, { flipped: true, static: true }) + "</div>" +
+      "<div>" + faceUpHtml(c, false) + "</div>" +
       "<div>" +
       "<h2>" + escapeHtml(text.name) + "</h2>" +
       '<p class="meta" style="color:var(--muted)">' + escapeHtml(metaLine(c)) + "</p>" +
@@ -510,11 +513,10 @@
       "<h4>" + t("ui.reversed") + ' <span class="badge rev">' + t("ui.reversed") + "</span></h4>" + keywordsHtml(text.keywords.reversed) +
       '<p class="meaning-reversed">' + escapeHtml(text.meaning.reversed) + "</p>" +
       "</div></div>";
-    return true;
   }
 
   function openCardDialog(id) {
-    if (!renderCardDialog(id)) return;
+    renderCardDialog(id);
     state.dialogCard = id;
     $("#card-dialog").showModal();
   }
@@ -534,7 +536,7 @@
   function storageGet(key) {
     try {
       return window.localStorage.getItem(key);
-    } catch (e) {
+    } catch {
       return null;
     }
   }
@@ -542,13 +544,13 @@
     try {
       if (value == null) window.localStorage.removeItem(key);
       else window.localStorage.setItem(key, value);
-    } catch (e) { /* private mode: settings still work for this visit */ }
+    } catch { /* private mode: settings still work for this visit */ }
   }
 
   function loadBirth() {
     try {
       return JSON.parse(storageGet(STORAGE_KEY));
-    } catch (e) {
+    } catch {
       return null;
     }
   }
@@ -600,8 +602,13 @@
     const unknown = $("#birth-time-unknown").checked;
     const time = $("#birth-time").value;
     if (!unknown && !/^\d{2}:\d{2}/.test(time)) return { error: t("ui.err_time") };
-    const latText = $("#birth-lat").value.trim(), lonText = $("#birth-lon").value.trim();
-    const lat = latText === "" ? null : Number(latText), lon = lonText === "" ? null : Number(lonText);
+    const coord = (sel) => {
+      const v = $(sel).value.trim();
+      return v === "" ? null : Number(v);
+    };
+    const lat = coord("#birth-lat");
+    const lon = coord("#birth-lon");
+    // Written as !(x <= max) so that NaN is rejected too.
     if ((lat == null) !== (lon == null) || (lat != null && (!(Math.abs(lat) <= 90) || !(Math.abs(lon) <= 180)))) {
       return { error: t("ui.err_coords") };
     }
@@ -617,10 +624,11 @@
     };
   }
 
-  const placeResults = [];
+  let placeResults = [];
 
   async function searchPlace() {
     const q = $("#birth-place").value.trim();
+    const [name, ...rest] = q.split(",");
     const list = $("#place-results");
     const chosen = $("#place-chosen");
     if (q.length < 2) {
@@ -631,18 +639,17 @@
     list.hidden = true;
     try {
       const res = await window.fetch("https://geocoding-api.open-meteo.com/v1/search?count=6&language=" + I.lang +
-        "&format=json&name=" + encodeURIComponent(q.split(",")[0].trim()));
+        "&format=json&name=" + encodeURIComponent(name.trim()));
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
       let results = data.results || [];
       // "Aveiro, Portugal": use the part after the comma to narrow the results.
-      const hint = q.split(",").slice(1).join(",").trim().toLowerCase();
+      const hint = rest.join(",").trim().toLowerCase();
       if (hint) {
         const narrowed = results.filter((r) => [r.country, r.admin1, r.country_code].some((x) => x && x.toLowerCase().startsWith(hint)));
         if (narrowed.length) results = narrowed;
       }
-      placeResults.length = 0;
-      results.filter((r) => r.timezone).forEach((r) => placeResults.push(r));
+      placeResults = results.filter((r) => r.timezone);
       if (!placeResults.length) {
         chosen.textContent = t("ui.place_none");
         return;
@@ -652,7 +659,7 @@
         " <small>" + r.latitude.toFixed(2) + ", " + r.longitude.toFixed(2) + "</small></button></li>").join("");
       list.hidden = false;
       chosen.textContent = t("ui.place_choose");
-    } catch (e) {
+    } catch {
       chosen.textContent = t("ui.place_offline");
     }
   }
@@ -721,17 +728,18 @@
           "<td>" + cardLinkHtml(p.sign.card) + " · " + cardLinkHtml(p.decan.card) + "</td></tr>";
       }).join("");
 
+    const elName = (e) => t("el_" + e);
+    const elSuit = (e) => t("suit_" + A.ELEMENTS[e].suit);
     const total = Object.values(c.elements).reduce((a, v) => a + v, 0);
     const bars = Object.keys(c.elements).map((e) =>
-      '<div class="el-bar el-' + e.toLowerCase() + '"><span>' + t("el_" + e) + " · " + t("suit_" + A.ELEMENTS[e].suit) + "</span>" +
+      '<div class="el-bar el-' + e.toLowerCase() + '"><span>' + elName(e) + " · " + elSuit(e) + "</span>" +
       '<div class="el-track"><div style="width:' + ((c.elements[e] / total) * 100).toFixed(0) + '%"></div></div>' +
       "<b>" + c.elements[e] + "</b></div>").join("");
     const dom = c.dominantElement;
-    const elName = (e) => t("el_" + e);
     const elementText = dom
-      ? t("ui.el_strongest", { element: elName(dom), traits: escapeHtml(t("eltraits_" + dom)), suit: t("suit_" + A.ELEMENTS[dom].suit) })
+      ? t("ui.el_strongest", { element: elName(dom), traits: escapeHtml(t("eltraits_" + dom)), suit: elSuit(dom) })
       : t("ui.el_balanced", { elements: I.joinList(c.strongestElements.map(elName)),
-        suits: I.joinList(c.strongestElements.map((e) => t("suit_" + A.ELEMENTS[e].suit))) });
+        suits: I.joinList(c.strongestElements.map(elSuit)) });
     const mode = c.dominantModality;
     const modeText = mode
       ? t("ui.mode_strongest", { mode: t("mod_" + mode), text: t("ui.mode_" + mode) })
@@ -828,7 +836,7 @@
         fillBirthForm(saved);
         setChart(saved);
         return;
-      } catch (e) {
+      } catch {
         saveBirth(null); // corrupt or outdated data
       }
     }
@@ -944,6 +952,6 @@
     initChart();
   }
 
-  window.TarotApp = { state, chartState, setLanguage }; // handy for debugging in the console
+  window.TarotApp = { state, chartState, setLanguage }; // used by the tests; also handy in the console
   init();
 })();

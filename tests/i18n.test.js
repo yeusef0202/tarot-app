@@ -21,7 +21,7 @@ function inPortuguese(fn) {
   }
 }
 
-const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // strip accents
 // English words that should never show up in Portuguese text.
 // Letters with accents count as letters (\b would split "cruéis" into "cru" + "is").
 const ENGLISH = /(?<![\p{L}])(the|and|you|your|with|this|that|is|are|of|card|cards|reversed|upright|when|why|who|where|yes)(?![\p{L}])/iu; // not "no": it is Portuguese too
@@ -262,7 +262,7 @@ test("Portuguese yes/no answers in a full sentence", () => {
 });
 
 test("Portuguese open answers, summaries and stories are fully in Portuguese", () => {
-  const card = (n, r) => ({ card: T.DECK.find((c) => c.name === n), reversed: !!r });
+  const card = (name) => ({ card: T.DECK.find((c) => c.name === name), reversed: false });
   const NOW = Date.UTC(2026, 8, 29);
   inPortuguese(() => {
     const when = T.openAnswer("Quando vou encontrar o amor?", [card("Four of Swords"), card("The Magician"), card("Two of Wands")], "three", { now: NOW });
