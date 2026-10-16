@@ -98,6 +98,32 @@ test("no two cards share the same meaning text (catches copy/paste errors)", () 
   assert.equal(new Set(texts).size, texts.length);
 });
 
+// Each topic meaning must be about its topic, so swapped fields (a money text
+// under love) are caught.
+const TOPIC_WORDS = {
+  love: /love|relationship|partner|romanc|single|dating|crush|flirt|admirer|lover|heart/i,
+  career: /work|job|career|colleague|boss|project|business|team/i,
+  money: /money|financ|spend|saving|budget|income|debt|invest|pay|wealth/i,
+  health: /health|body|energy|rest|stress|wellbeing|sleep|habit|vitality|recover|tension|mood|anxiety|exhaust|burnout/i,
+};
+
+test("every card has an upright and reversed meaning for love, career, money and health", () => {
+  assert.deepEqual(T.TOPICS, ["general", "love", "career", "money", "health"]);
+  const seen = new Set();
+  for (const c of T.DECK) {
+    assert.deepEqual(Object.keys(c.topics), Object.keys(TOPIC_WORDS), c.name);
+    for (const [topic, words] of Object.entries(TOPIC_WORDS)) {
+      for (const o of ["upright", "reversed"]) {
+        const text = c.topics[topic][o];
+        assert.ok(typeof text === "string" && text.length > 30, `${c.name} ${topic} ${o}`);
+        assert.match(text, words, `${c.name} ${topic} ${o}: ${text}`);
+        assert.ok(!seen.has(text), "duplicate text: " + text);
+        seen.add(text);
+      }
+    }
+  }
+});
+
 // ---------------------------------------------------------------------------
 // 2. Descriptions are correct: checked against an independent reference of
 //    standard RWS meanings (Waite, Biddy Tarot, Labyrinthos). Each entry lists

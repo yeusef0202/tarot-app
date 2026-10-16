@@ -67,6 +67,34 @@ test("all 78 cards have a complete Portuguese text", () => {
   }
 });
 
+test("all 78 cards have Portuguese love, career, money and health meanings", () => {
+  const words = {
+    love: /amor|relação|parceir|romanc|solteir|namor|paix|apaixon|coração|admirador/i,
+    career: /trabalho|emprego|carreira|colega|chefe|projeto|negócio|profission|equipa/i,
+    money: /dinheiro|finan|gast|poup|orçamento|rendimento|dívida|invest|pag|riqueza/i,
+    health: /saúde|corpo|energia|descans|stress|bem-estar|sono|hábito|vitalidade|recupera|tensão|humor|ansiedade|exaust|esgota/i,
+  };
+  const seen = new Set();
+  for (const card of T.DECK) {
+    for (const [topic, re] of Object.entries(words)) {
+      const pair = PT[card.name][topic];
+      assert.equal(pair.length, 2, card.name + " " + topic);
+      pair.forEach((text, i) => {
+        const where = `${card.name} ${topic} ${i ? "reversed" : "upright"}: ${text}`;
+        assert.ok(text.length > 20, where);
+        assert.match(text, re, where);
+        assert.doesNotMatch(text, ENGLISH, where);
+        assert.notEqual(text, card.topics[topic][i ? "reversed" : "upright"], where);
+        assert.ok(!seen.has(text), "duplicate text: " + text);
+        seen.add(text);
+      });
+    }
+  }
+  const star = T.DECK.find((c) => c.name === "The Star");
+  assert.match(T.text(star).topics.love.upright, /^Hope and healing in love/);
+  assert.match(inPortuguese(() => T.text(star).topics.love.upright), /^Esperança e cura no amor/);
+});
+
 test("Portuguese card names follow the standard names", () => {
   const majors = ["O Louco", "O Mago", "A Sacerdotisa", "A Imperatriz", "O Imperador", "O Hierofante", "Os Enamorados",
     "O Carro", "A Força", "O Eremita", "A Roda da Fortuna", "A Justiça", "O Enforcado", "A Morte", "A Temperança",

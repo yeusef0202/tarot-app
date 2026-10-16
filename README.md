@@ -8,6 +8,7 @@ A simple tarot reading app with the full 78-card Rider–Waite–Smith deck. Shu
 - Answers for yes/no, timing ("When…?"), cause ("Why…?"), people ("Who…?"), places ("Where…?"), advice and "A or B?" questions
 - Birth chart: Sun, Moon, Rising and planets from your birth date, time and place, with the tarot cards linked to them (Golden Dawn correspondences, decans, court cards, tarot numerology). Readings mark your personal cards.
 - Upright and reversed meanings, keywords, imagery and astrology for every card
+- Meanings for love, career, money and wellbeing: buttons above the reading and in the Card Guide switch every card to that topic (the choice is remembered)
 - English and European Portuguese (🌐 menu in the header; remembers your choice and follows the browser language)
 - Card Guide to browse and search the whole deck
 - Cryptographically random shuffling (Fisher–Yates with `crypto.getRandomValues`)

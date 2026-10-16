@@ -20,11 +20,13 @@
     activeIndex: -1, // drawn card currently highlighted
     status: null,    // function returning the status message (re-run on language change)
     dialogCard: null, // id of the card open in the dialog
+    topic: "general", // area of life the meanings are read for (T.TOPICS)
   };
 
   // Birth chart (saved in localStorage) and the tarot cards linked to it.
   const STORAGE_KEY = "arcana.birth";
   const LANG_KEY = "arcana.lang";
+  const TOPIC_KEY = "arcana.topic";
   const chartState = { saved: null, chart: null, links: [] };
 
   // ------------------------------------------------------------ suit icons
@@ -121,6 +123,20 @@
 
   function keywordsHtml(list) {
     return '<ul class="keywords">' + list.map((k) => "<li>" + escapeHtml(k) + "</li>").join("") + "</ul>";
+  }
+
+  /** The card's meaning for the chosen topic (love, career…), or its general meaning. */
+  function meaningFor(text, orient) {
+    return state.topic === "general" ? text.meaning[orient] : text.topics[state.topic][orient];
+  }
+
+  /** Buttons to read the meanings for love, career, money… */
+  function topicTabsHtml() {
+    return '<div class="topic-tabs"><span class="control-label">' + t("ui.topic_label") + "</span>" +
+      '<div class="segmented" role="radiogroup" aria-label="' + escapeHtml(t("ui.topic_label")) + '">' +
+      T.TOPICS.map((k) => '<button type="button" role="radio" data-topic="' + k + '" aria-checked="' + (k === state.topic) + '">' +
+        t("ui.topic." + k) + "</button>").join("") +
+      "</div></div>";
   }
 
   // --------------------------------------------------------------- reading
@@ -234,10 +250,10 @@
       '<p class="meta">' + escapeHtml(metaLine(c)) + "</p>" +
       personalNoteHtml(i) +
       keywordsHtml(text.keywords[orient]) +
-      '<p class="meaning">' + escapeHtml(text.meaning[orient]) + "</p>" +
+      '<p class="meaning">' + escapeHtml(meaningFor(text, orient)) + "</p>" +
       '<p class="imagery"><strong>' + t("ui.on_the_card") + "</strong> " + escapeHtml(text.image) + "</p>" +
       "<details><summary>" + t(d.reversed ? "ui.upright_meaning" : "ui.reversed_meaning") + "</summary>" +
-      "<p>" + escapeHtml(text.meaning[other]) + "</p></details>" +
+      "<p>" + escapeHtml(meaningFor(text, other)) + "</p></details>" +
       "</div></article>"
     );
   }
@@ -250,6 +266,16 @@
   function renderExplanations() {
     // Most recent draw first, so the newest explanation is right below the spread.
     $("#explanations").innerHTML = state.drawn.map(explanationHtml).reverse().join("");
+    $("#topic-bar").innerHTML = state.drawn.length ? topicTabsHtml() : "";
+    $("#topic-bar").hidden = !state.drawn.length;
+  }
+
+  /** Read every meaning (reading and Card Guide) for `topic`, and remember the choice. */
+  function setTopic(topic) {
+    state.topic = topic;
+    storageSet(TOPIC_KEY, topic);
+    renderExplanations();
+    if (state.dialogCard && $("#card-dialog").hasAttribute("open")) renderCardDialog(state.dialogCard);
   }
 
   function meterHtml(score, left, right) {
@@ -508,10 +534,11 @@
       "<h2>" + escapeHtml(text.name) + "</h2>" +
       '<p class="meta" style="color:var(--muted)">' + escapeHtml(metaLine(c)) + "</p>" +
       '<p class="imagery"><strong>' + t("ui.on_the_card") + "</strong> " + escapeHtml(text.image) + "</p>" +
+      topicTabsHtml() +
       "<h4>" + t("ui.upright") + ' <span class="badge up">' + t("ui.upright") + "</span></h4>" + keywordsHtml(text.keywords.upright) +
-      '<p class="meaning-upright">' + escapeHtml(text.meaning.upright) + "</p>" +
+      '<p class="meaning-upright">' + escapeHtml(meaningFor(text, "upright")) + "</p>" +
       "<h4>" + t("ui.reversed") + ' <span class="badge rev">' + t("ui.reversed") + "</span></h4>" + keywordsHtml(text.keywords.reversed) +
-      '<p class="meaning-reversed">' + escapeHtml(text.meaning.reversed) + "</p>" +
+      '<p class="meaning-reversed">' + escapeHtml(meaningFor(text, "reversed")) + "</p>" +
       "</div></div>";
   }
 
@@ -895,6 +922,18 @@
     I.setLanguage(initialLanguage());
     langSelect.value = I.lang;
     applyStaticText();
+
+    const savedTopic = storageGet(TOPIC_KEY);
+    if (T.TOPICS.includes(savedTopic)) state.topic = savedTopic;
+    // Topic buttons above the reading's explanations and in the card dialog.
+    for (const sel of ["#topic-bar", "#card-dialog-body"]) {
+      $(sel).addEventListener("click", (e) => {
+        const b = e.target.closest("[data-topic]");
+        if (!b) return;
+        setTopic(b.dataset.topic);
+        $(sel + ' [data-topic="' + b.dataset.topic + '"]').focus(); // the buttons were re-rendered
+      });
+    }
 
     document.querySelectorAll(".menu-item").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
 

@@ -303,6 +303,58 @@ test("Card Guide lists all 78 cards, filters, searches and shows both meanings",
   }
 });
 
+test("topic buttons switch every meaning to love, career, money or health, and are remembered", async () => {
+  const app = load();
+  const { T, $, $$ } = app;
+  assert.equal($("#topic-bar").hidden, true, "no topic buttons before a card is drawn");
+  pickSpread(app, "three");
+  await shuffle(app);
+  for (let k = 0; k < 3; k++) enabledFan(app)[k].click();
+  assert.equal($("#topic-bar").hidden, false);
+  assert.deepEqual($$("#topic-bar [data-topic]").map((b) => b.textContent), ["General", "Love", "Career", "Money", "Wellbeing"]);
+  const checked = (sel) => $$(sel + ' [aria-checked="true"]').map((b) => b.dataset.topic);
+  assert.deepEqual(checked("#topic-bar"), ["general"]);
+  checkExplanations(app, "three"); // general meanings by default
+
+  const pick = (sel, topic) => $(`${sel} [data-topic="${topic}"]`).click();
+  for (const topic of ["love", "career", "money", "health", "general"]) {
+    pick("#topic-bar", topic);
+    assert.deepEqual(checked("#topic-bar"), [topic]);
+    assert.equal(app.w.document.activeElement.dataset.topic, topic, "focus stays on the chosen button");
+    for (const e of $$(".explain")) {
+      const card = T.DECK.find((c) => c.id === e.dataset.cardId);
+      const rev = e.dataset.reversed === "true";
+      const meaning = (o) => (topic === "general" ? card.meaning[o] : card.topics[topic][o]);
+      assert.equal(e.querySelector(".meaning").textContent, meaning(rev ? "reversed" : "upright"), card.name + " " + topic);
+      assert.equal(e.querySelector("details p").textContent, meaning(rev ? "upright" : "reversed"), card.name + " " + topic);
+    }
+  }
+
+  // The Card Guide dialog has the same buttons and shares the choice.
+  pick("#topic-bar", "career");
+  app.$('.menu-item[data-view="guide"]').click();
+  $('#guide-grid [data-card-id="major-17"]').click();
+  const star = T.DECK.find((c) => c.name === "The Star");
+  assert.deepEqual(checked("#card-dialog-body"), ["career"]);
+  assert.equal($("#card-dialog-body .meaning-upright").textContent, star.topics.career.upright);
+  assert.equal($("#card-dialog-body .meaning-reversed").textContent, star.topics.career.reversed);
+  pick("#card-dialog-body", "love");
+  assert.equal($("#card-dialog-body .meaning-upright").textContent, star.topics.love.upright);
+  assert.equal($("#card-dialog-body .meaning-reversed").textContent, star.topics.love.reversed);
+  assert.deepEqual(checked("#topic-bar"), ["love"], "the reading follows the dialog's choice");
+
+  // Portuguese, and the choice is remembered on the next visit.
+  chooseLanguage(app, "pt");
+  assert.deepEqual($$("#card-dialog-body [data-topic]").map((b) => b.textContent), ["Geral", "Amor", "Carreira", "Dinheiro", "Bem-estar"]);
+  assert.match($("#card-dialog-body .meaning-upright").textContent, /^Esperança e cura no amor/);
+  assert.equal(app.w.localStorage.getItem("arcana.topic"), "love");
+  const again = load({ storage: { "arcana.topic": "money" } });
+  again.$('.menu-item[data-view="guide"]').click();
+  again.$('#guide-grid [data-card-id="major-17"]').click();
+  assert.equal(again.$("#card-dialog-body .meaning-upright").textContent, star.topics.money.upright);
+  assert.equal(load({ storage: { "arcana.topic": "nonsense" } }).w.TarotApp.state.topic, "general");
+});
+
 test("a yes/no question gets an answer that combines all the cards", async () => {
   const app = load();
   const q = app.$("#question");
